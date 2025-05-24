@@ -1,5 +1,6 @@
+import torch
 import torch.nn as nn
-from .components import STGCN
+from .components.positional_encoding import PositionalEncoding
 import torch.nn.functional as F
 
 class Imitator(nn.Module):
@@ -27,40 +28,37 @@ class Imitator(nn.Module):
             "pool_dim": pool_dim
         }
         
-        self.stgcn = STGCN(
-            in_channels=input_size,
-            out_channels=output_size,
-            num_blocks=2,
-            kernel_size_spatial=25,
-            kernel_size_temporal=9
-        )
+        self.linear = nn.Linear(input_size, hidden_size)
+        nn.init.xavier_uniform_(self.linear.weight)
+        self.norm = nn.LayerNorm(hidden_size)
+
+        self.pe = PositionalEncoding(d_model=hidden_size)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=nhead, dim_feedforward=ff_dim, batch_first=True)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
         
         self.temporal_adjuster = nn.Sequential(
             nn.Linear(T_size, pool_dim),
-            nn.ReLU()
-        )        
+            nn.ReLU(),
+            nn.Linear(pool_dim, pool_dim),
+        )
 
-        self.linear_out = nn.Linear(output_size, output_size)
+        self.linear_out = nn.Linear(hidden_size, output_size)
+        nn.init.xavier_uniform_(self.linear_out.weight)
+        
 
-    def forward(self, x):
+    def forward(self, x:torch.Tensor) -> torch.Tensor:
         # x -> [batch_size, T, input_size]
         B, T, D, C = x.shape
-        x = x.view(B, T, D * C)     # [B, T, 1086]
-        x = x.unsqueeze(1)          # [B, 1, T, 1086]
-        x = x.permute(0, 3, 1, 2)   # [B, 1086, T, 1]
+        x = x.view(B, T,  D * C)
+        x = F.gelu(self.linear(x))
+        x = self.norm(x)
 
-        x = self.stgcn(x)
-        x = F.relu(x)
-        # print("stgcn: ", x.shape)
-        
-        x = x.view(B, -1, T)
-        # print("view: ", x.shape)        
+        x += self.pe(x)
+        x = self.transformer(x)
 
-        x = self.temporal_adjuster(x)  # [B, hidden, 128]
+        x = x.transpose(1, 2)           # [B, hidden, 525]
+        x = self.temporal_adjuster(x)   # [B, hidden, 128]
         x = x.transpose(1, 2)
-        # print("temporal_adjuster: ", x.shape)
-
+        
         x = self.linear_out(x)
-        # print("linear_out: ", x.shape)
-
         return x
