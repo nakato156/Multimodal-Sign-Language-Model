@@ -10,7 +10,7 @@ def run(
     train_ratio: float = 0.8,
 ):
     _, _, h5_file, csv_file = setup_paths()
-    embedding_layer, tokenizer, _, _ = load_llm_components()
+    embedding_layer, lm_head, tokenizer, _, _ = load_llm_components()
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
@@ -26,7 +26,6 @@ def run(
     train_config = ConfigLoader("config/training/train_config.toml").load_config()
     train_ratio = train_config.get("train_ratio", train_ratio)
     train_config.update({
-        "checkpoint": 1,
         "learning_rate": train_config.get("learning_rate", 0.00238),
         "epochs": epochs if epochs else train_config.get("epochs", 100),
         "batch_size": batch_size if batch_size else train_config.get("batch_size", 32),
@@ -43,7 +42,7 @@ def run(
     tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=4)
 
     model = build_model(**model_parameters)
-    run_training(train_config, tr_dl, val_dl, embedding_layer, model)
+    run_training(train_config, tr_dl, val_dl, embedding_layer, model, llama_lm_head=lm_head)
 
 if __name__ == "__main__":
     import argparse

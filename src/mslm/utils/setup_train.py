@@ -1,4 +1,3 @@
-import os
 import torch
 
 from torch.utils.data import DataLoader, random_split
@@ -26,8 +25,9 @@ def load_llm_components():
     llm_tools = Tools()
     embedding_layer, tokenizer = llm_tools.getLLM()
     vocab_size, d_model = embedding_layer.weight.size()
+    lm_head = llm_tools.lm_head
     print(f"Vocab size: {vocab_size}, d_model: {d_model}")
-    return embedding_layer, tokenizer, vocab_size, d_model
+    return embedding_layer, lm_head, tokenizer, vocab_size, d_model
 
 def prepare_datasets(h5File, csvFile, tokenizer, max_seq_len, train_ratio, device):
     """Carga el dataset base, lo envuelve y lo divide en entrenamiento y validación."""
@@ -73,9 +73,9 @@ def build_model(input_size, T_size, output_size, device, compile=True, **kwargs)
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
     return model
 
-def run_training(params, train_dataloader, val_dataloader, embedding_layer, model, PROFILE=False):
+def run_training(params, train_dataloader, val_dataloader, embedding_layer, model, llama_lm_head, PROFILE=False):
     """Configura y ejecuta el entrenamiento."""
-    trainer = Trainer(model, train_dataloader, val_dataloader, embedding_layer, **params)
+    trainer = Trainer(model, llama_lm_head, train_dataloader, val_dataloader, embedding_layer, **params)
     trainer.ckpt_mgr.save_params(params)
 
     if PROFILE:

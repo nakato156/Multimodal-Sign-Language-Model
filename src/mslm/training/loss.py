@@ -15,10 +15,5 @@ class ImitatorLoss(nn.Module):
         self.cos_sim = nn.CosineSimilarity(dim=-1)
 
     def forward(self, pred, target):
-        l2 = F.mse_loss(pred, target)
-
-        # cosine_sim = self.cos_sim(F.normalize(pred, p=2, dim=-1), F.normalize(target, p=2, dim=-1))
-        # cosine_loss = 1 - cosine_sim.mean()
-
-        # return (self.alpha * l2) + (self.beta * cosine_loss)
-        return l2
+        kl = F.kl_div(pred, target)
+        return kl
