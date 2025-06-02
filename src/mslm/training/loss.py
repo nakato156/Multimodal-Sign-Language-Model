@@ -3,17 +3,23 @@ import torch.nn.functional as F
 
 class ImitatorLoss(nn.Module):
 
-    def __init__(self, alpha=1.0, beta=1.0):
+    def __init__(self):
         """
-        Combina L2 (MSE) y CosineEmbeddingLoss:
-        total_loss = alpha * L2 + beta * (1 - cos_similarity)
+        L2 (MSE)
+        return  L2
         """
         super().__init__()
-
-        self.alpha = alpha
-        self.beta = beta
-        self.cos_sim = nn.CosineSimilarity(dim=-1)
-
+    
     def forward(self, pred, target):
-        kl = F.kl_div(pred, target)
-        return kl
+        """
+        Compute the loss between predicted and target values.
+        
+        Args:
+            pred (torch.Tensor): Predicted values.
+            target (torch.Tensor): Target values.
+        
+        Returns:
+            torch.Tensor: Computed loss value.
+        """
+        loss = F.mse_loss(pred, target)
+        return loss

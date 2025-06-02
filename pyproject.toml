@@ -40,3 +40,7 @@ env = { PYTHONPATH = "." }
 [tool.poe.tasks.study]
 cmd = "python scripts/make_study.py --n_trials 30"
 env = { PYTHONPATH = "." }
+
+[tool.poe.tasks.embed]
+cmd = "python scripts/pre_calculate.py"
+env = { PYTHONPATH = "." }

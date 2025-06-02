@@ -1,6 +1,6 @@
 learning_rate = 0.001
-model_version = 50
-checkpoint = 2
+model_version = 61
+checkpoint = 1
 epochs = 30
 log_interval = 2
 checkpoint_interval = 5

@@ -1,6 +1,7 @@
 from tqdm import tqdm
 
 import torch
+import torch.nn as nn
 from torch import autocast, GradScaler
 from torch.optim import AdamW
 from torch.utils.tensorboard import SummaryWriter
@@ -20,9 +21,9 @@ class Trainer:
         self.learning_rate = kwargs.get("learning_rate", 1e-4)
         self.log_interval = kwargs.get("log_interval", 5)
         self.checkpoint_interval = kwargs.get("checkpoint_interval", 5)
-        self.embed_layer = embedding_layer
+        self.embed_layer = embedding_layer.to(self.device)
+
         self.model = model.to(self.device)
-        self.llama_lm_head = llama_lm_head.to(self.device)  
         self.ckpt_mgr = CheckpointManager(
             kwargs.get("model_dir", "../outputs/checkpoints"),
             kwargs.get("model_version", 1),
@@ -33,6 +34,8 @@ class Trainer:
         self.writer = SummaryWriter("../outputs/reports/")
         self.scaler = GradScaler(device=self.device)
         self.early_stopping = EarlyStopping(patience=5)
+
+        self.criterion = nn.MSELoss()
 
         if torch.cuda.get_device_capability()[0] >= 8:
             torch.set_default_dtype(torch.bfloat16)
@@ -81,32 +84,19 @@ class Trainer:
                 data = data.to(self.device)
                 input_ids = input_ids.to(self.device)
                 embeddings = self.embed_layer(input_ids)
-                true_logits = self.llama_lm_head(embeddings)
-                B, T, V = true_logits.shape
-                true_probs = F.log_softmax(true_logits, dim=-1)
 
             with nvtx.annotate("Training", color="blue"):
                 #Change to bfloat16 if the GPU used is with Ampere Architecture or Higher
                 if torch.cuda.get_device_capability()[0] >= 8:
                     with autocast(device_type=self.device, dtype=torch.bfloat16):
                         output = self.model(data)
-                        pred_logits = self.llama_lm_head(output)
-                        pred_log_probs = F.log_softmax(pred_logits, dim=-1)
-
-                        true_probs = true_probs.view(B * T, V)
-                        pred_log_probs = pred_log_probs.view(B * T, V)
+                        loss = self.criterion(output, embeddings)
                 else:
                     with autocast(device_type=self.device):
                         output = self.model(data)
-                        pred_logits = self.llama_lm_head(output)
-                        pred_log_probs = F.log_softmax(pred_logits, dim=-1)
-
-                        true_probs = true_probs.view(B * T, V)
-                        pred_log_probs = pred_log_probs.view(B * T, V)
-
-
+                        loss = self.criterion(output, embeddings)
+            
             with nvtx.annotate("Backward Pass", color="blue"):
-                loss = F.kl_div(pred_log_probs, true_probs, reduction='batchmean', log_target=True)
                 total_loss += loss.detach()
                 final_loss = total_loss.item()
 
@@ -128,7 +118,7 @@ class Trainer:
             self.ckpt_mgr.save_model(self.model, 1)
         elif (epoch % self.checkpoint_interval == 0 and epoch != 0) or (epoch == self.epochs - 1):
             self.ckpt_mgr.save_model(self.model, epoch)
-        return final_loss/len(self.train_loader)
+        return final_loss
     
     def _validate(self, epoch):
         with nvtx.annotate("Prueba de Validacion", color="blue"):
@@ -138,24 +128,11 @@ class Trainer:
                 
                 for data, input_ids in self.val_loader:
                     data = data.to(self.device)
-                    
                     input_ids = input_ids.to(self.device)
                     embeddings = self.embed_layer(input_ids)
-                    
-                    true_logits = self.llama_lm_head(embeddings)
-                    B, T, V = true_logits.shape
-                    true_probs = F.log_softmax(true_logits, dim=-1)
 
-                    output = self.model(data).to(dtype=torch.bfloat16, non_blocking=True)
-                    pred_logits = self.llama_lm_head(output).to(dtype=torch.bfloat16, non_blocking=True)
-                    pred_log_probs = F.log_softmax(pred_logits, dim=-1)
-
-                    # View
-                    true_probs = true_probs.view(B * T, V)
-                    pred_log_probs = pred_log_probs.view(B * T, V)
-                        
-                    loss = F.kl_div(pred_log_probs, true_probs, reduction='batchmean', log_target=True)
-
+                    output = self.model(data)
+                    loss = self.criterion(output.to(dtype=torch.bfloat16), embeddings)
                     val_loss += loss.detach()
 
                     # del output, data, embeddings, cos_sim
