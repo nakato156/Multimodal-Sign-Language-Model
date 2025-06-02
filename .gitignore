@@ -15,6 +15,13 @@ profile.sh
 
 nk_*
 *.pickle
+**/test.ipynb
 
 # macOS system files
 *.DS_Store
+
+#PIP Packages
+pip-packages
+
+#Compiler Dependencies
+**/deps
