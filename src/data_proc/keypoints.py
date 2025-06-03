@@ -1,15 +1,41 @@
 import numpy as np
 
 from video_reader import PyVideoReader
-from dwpose import DwposeDetector
+from rtmlib import RTMPose, RTMDet, draw_skeleton, Custom
 from PIL import Image
 import pickle
+import cv2
+import numpy as np
+
+from IPython.display import display
 
 DEBUG = False
 
 class KeypointProcessing:
     def __init__(self):
-        self.model = DwposeDetector.from_pretrained_default()
+        backend = 'onnxruntime'
+        device = 'cuda'
+        self.openpose= True
+
+#        self.model_pose = RTMPose(onnx_model='https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-l_simcc-ucoco_dw-ucoco_270e-384x288-2438fd99_20230728.zip',
+#                            backend=backend,
+#                            device=device)
+#
+#        self.model_det = RTMDet(onnx_model='https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_x_8xb8-300e_humanart-a39d44ed.zip',
+#                            backend=backend,
+#                            device=device)
+
+        self.model = Custom(
+            to_openpose=self.openpose,
+            det_class='RTMDet',
+            det='https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_x_8xb8-300e_humanart-a39d44ed.zip',
+            det_input_size=(640, 640),
+            pose_class='RTMPose',
+            pose='https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-l_simcc-ucoco_dw-ucoco_270e-384x288-2438fd99_20230728.zip',
+            pose_input_size=(288, 384),
+            backend=backend,
+            device=device,
+        )
 
     def process_keypoints(self, videoPath):
         print("Video: ", videoPath)
@@ -21,14 +47,22 @@ class KeypointProcessing:
         num_frames = len(video)
 
         for i in range(num_frames):
-            frame_image = Image.fromarray(video[i])
+#            bboxes = self.model_det(video[i])
+#            keypoint_dict, scores= self.model_pose(video[i], bboxes)
 
-            imageDeb, keypoint_dict, _ = self.model(frame_image, include_hand=True, include_face=True, include_body=True, image_and_json=True)
+            keypoint_dict, scores= self.model(video[i])
+
             keypoints.append(keypoint_dict)
 
-            imageDeb.save("deb.jpg")
+            #img_show = np.array(video[i], dtype=np.uint8)
+            #img_show = draw_skeleton(img_show, keypoint_dict, scores, kpt_thr=0.5, openpose_skeleton=self.openpose)
 
-        print(keypoints)
+            #print(f"Keypoints{[i]}", keypoint_dict)
+            #print(f"Score{[i]}", scores)
+
+            #cv2.imwrite(f"./frames/deb{i}.jpg", img_show)
+
+        #print(keypoints)
         
         if DEBUG: 
             print("Saving keypoints")
@@ -48,10 +82,10 @@ class KeypointProcessing:
         all_frames = []
 
         for frame in signer_frames:
-            pose = np.array(frame['pose_keypoints_2d']).reshape(-1, 3)
-            hand_l = np.array(frame['hand_left_keypoints_2d']).reshape(-1, 3)
-            hand_r = np.array(frame['hand_right_keypoints_2d']).reshape(-1, 3)
-            face = np.array(frame['face_keypoints_2d']).reshape(-1, 3)
+            pose = np.array(frame['pose_keypoints_2d']).reshape(-1, 2)
+            hand_l = np.array(frame['hand_left_keypoints_2d']).reshape(-1, 2)
+            hand_r = np.array(frame['hand_right_keypoints_2d']).reshape(-1, 2)
+            face = np.array(frame['face_keypoints_2d']).reshape(-1, 2)
 
             full_frame = np.concatenate([pose, face, hand_l, hand_r], axis=0)  
             all_frames.append(full_frame)
@@ -59,42 +93,33 @@ class KeypointProcessing:
         return np.stack(all_frames)
 
     def extract_coords(self, keypoint, index):
-        x, y, c = keypoint[index * 3:index*3+3]
-        return np.array([x, y]), c
+        x, y = keypoint[index * 2:index*2+2]
+        return np.array([x, y])
 
     def compute_relative_position(self, pose_keypoints, left_hand_keypoints, right_hand_keypoints):
-        l_shoulder, c1 = self.extract_coords(pose_keypoints, 2) 
-        r_shoulder, c2 = self.extract_coords(pose_keypoints, 5)
-
-        if c1 < 0.5 or c2 < 0.5:
-            return None, 0, None, 0
+        l_shoulder = self.extract_coords(pose_keypoints, 2) 
+        r_shoulder = self.extract_coords(pose_keypoints, 5)
         
         center = (l_shoulder + r_shoulder)/2
 
-        l_hand, lc = self.extract_coords(left_hand_keypoints, 0)
-        r_hand, rc = self.extract_coords(right_hand_keypoints, 0)
+        l_hand = self.extract_coords(left_hand_keypoints, 0)
+        r_hand = self.extract_coords(right_hand_keypoints, 0)
 
-        return l_hand - center, lc, r_hand - center, rc
+        return l_hand - center, r_hand - center
 
     def compute_person_movement(self, frames):
         person_trackers = {}
 
         for frame_idx, frame in enumerate(frames):
-            for person_idx, person in enumerate(frame['people']):
+            for person_idx, person in enumerate(frame):
                 key = f"{person_idx}"
-                
-                pose = person.get('pose_keypoints_2d', [])
-                face = person.get('face_keypoints_2d', [])
-                hand_l = person.get('hand_left_keypoints_2d', [])
-                hand_r = person.get('hand_right_keypoints_2d', [])
 
-                if not pose or not hand_l or not hand_r:
-                    continue
+                pose = person[0:25,:]
+                face = person[25:95,:]
+                hand_l = person[95:116,:]
+                hand_r = person[0:,:]
 
-                lh_rel, lc, rh_rel, rc = self.compute_relative_position(pose, hand_l, hand_r)
-
-                if lc < 0.5 or rc < 0.5:
-                    continue
+                lh_rel, rh_rel = self.compute_relative_position(pose, hand_l, hand_r)
 
                 tracker = person_trackers.setdefault(key, {
                     'prev_lh': None,
