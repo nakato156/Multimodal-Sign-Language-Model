@@ -2,6 +2,7 @@ import h5py
 import os
 import pandas as pd
 import numpy as np
+import torch
 
 from pre_calculate import LLM
 from keypoints import KeypointProcessing
@@ -10,6 +11,56 @@ main_directory = "/home/giorgio6846/Code/Sign-AI"
 
 WRITE = True
 
+def save_keypoints(hdf5Group, videoFolderPath):
+    if WRITE:
+        group = hdf5Group.require_group("keypoints")
+
+    for video_idx, videoName  in enumerate(sorted(os.listdir(videoFolderPath))):
+        name, _ = os.path.splitext(videoName)
+        videoPath = os.path.join(videoFolderPath, videoName)
+
+        if not metaDF.loc[metaDF["id"]==name].shape[0] == 1:
+            continue
+        
+        keypoint = keypoint_tool.process_keypoints(videoPath)
+
+        if WRITE:
+            group.create_dataset(str(video_idx), data=keypoint, compression="gzip", compression_opts=4)
+
+def save_embeddings(hdf5Group, videoFolderPath):
+    if WRITE:
+        group = hdf5Group.require_group("embeddings")
+
+    for video_idx, videoName  in enumerate(sorted(os.listdir(videoFolderPath))):
+        name, _ = os.path.splitext(videoName)
+
+        if not metaDF.loc[metaDF["id"]==name].shape[0] == 1:
+            continue
+
+        label = metaDF.loc[metaDF["id"]==name]["label"].values[0]
+        print(label)
+        embedding = llm.run(label)
+        embedding = embedding.cpu().numpy()
+
+        if WRITE:
+            group.create_dataset(str(video_idx), data=embedding, compression="gzip", compression_opts=4)
+
+def save_labels(hdf5Group, videoFolderPath):
+    if WRITE:
+        group = hdf5Group.require_group("labels")
+
+    for video_idx, videoName  in enumerate(sorted(os.listdir(videoFolderPath))):
+        name, _ = os.path.splitext(videoName)
+
+        if not metaDF.loc[metaDF["id"]==name].shape[0] == 1:
+            continue
+
+        label = metaDF.loc[metaDF["id"]==name]["label"].values[0]
+
+        if WRITE:
+            dt = h5py.string_dtype(encoding='utf-8')
+            group.create_dataset(str(video_idx), data=[label], dtype=dt, compression="gzip")
+
 if __name__ == "__main__":
     dataPath = os.path.join(main_directory, "data")
     keypoint_tool = KeypointProcessing()
@@ -17,39 +68,24 @@ if __name__ == "__main__":
     f = h5py.File(os.path.join(dataPath, "dataset.hdf5"), 'a')
 
     for Folder in os.listdir(dataPath):
-
-        if Folder in f:
-            continue
-
         folderPath = os.path.join(dataPath, Folder)
 
-        embeddings = []
-        keypoints = []
-        labels = []
+        if not os.path.isdir(folderPath):
+            continue 
 
-        if os.path.isdir(folderPath):
-            videoFolderPath = os.path.join(folderPath, "videos")
-            metaDF = pd.read_csv(os.path.join(folderPath, "meta.csv"))
+        if Folder in f:
+            group = f[Folder]
+        else:
+            group = f.require_group(Folder)
 
-            for videoName in os.listdir(videoFolderPath):
-                name, _ = os.path.splitext(videoName)
-                videoPath = os.path.join(videoFolderPath, videoName)
+        videoFolderPath = os.path.join(folderPath, "videos")
+        metaDF = pd.read_csv(os.path.join(folderPath, "meta.csv"))
 
-                if metaDF.loc[metaDF["id"]==name].shape[0] == 1:
-                    label = metaDF.loc[metaDF["id"]==name]["label"].values[0]
-                    embedding = llm.run(label)
-                    keypoint = keypoint_tool.process_keypoints(videoPath)
+        if "keypoints" not in group:
+            save_keypoints(group, videoFolderPath)
 
-                    labels.append(label)
-                    embeddings.append(embedding)
-                    keypoints.append(keypoint)
+        if "embeddings" not in group:
+            save_embeddings(group, videoFolderPath)
 
-            if WRITE:
-                embeddings = np.array(embeddings)    
-                keypoints = np.array(keypoints)    
-                labels = np.array(labels, dtype='S')    
-
-                group = f.require_group(Folder)
-                group.create_dataset("embeddings", data=embeddings, compression="gzip", compression_opts=4, chunks=True)
-                group.create_dataset("keypoints", data=keypoints, compression="gzip", compression_opts=4)
-                group.create_dataset("labels", data=labels, compression="gzip", compression_opts=4)
+        if "labels" not in group:
+            save_labels(group, videoFolderPath)

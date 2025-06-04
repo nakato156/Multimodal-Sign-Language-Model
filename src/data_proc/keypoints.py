@@ -45,7 +45,8 @@ class KeypointProcessing:
         video = video_reader.decode()
 
         num_frames = len(video)
-
+        print(num_frames)
+        
         for i in range(num_frames):
 #            bboxes = self.model_det(video[i])
 #            keypoint_dict, scores= self.model_pose(video[i], bboxes)
