@@ -41,7 +41,12 @@ class KeypointProcessing:
         print("Video: ", videoPath)
         
         keypoints = []
-        video_reader = PyVideoReader(videoPath, device='cuda')
+        try:
+            video_reader = PyVideoReader(videoPath, device='cuda')
+        except Exception as e:
+            print(f"CUDA failed: {e}\nFalling back to CPU.")
+            video_reader = PyVideoReader(videoPath, device='cpu')
+
         video = video_reader.decode()
 
         num_frames = len(video)

@@ -9,13 +9,14 @@ from keypoints import KeypointProcessing
 
 main_directory = "/home/giorgio6846/Code/Sign-AI"
 
-WRITE = True
 
 def save_keypoints(hdf5Group, videoFolderPath):
-    if WRITE:
-        group = hdf5Group.require_group("keypoints")
+    group = hdf5Group.require_group("keypoints")
 
     for video_idx, videoName  in enumerate(sorted(os.listdir(videoFolderPath))):
+        if str(video_idx) in group:
+            continue
+        
         name, _ = os.path.splitext(videoName)
         videoPath = os.path.join(videoFolderPath, videoName)
 
@@ -24,12 +25,10 @@ def save_keypoints(hdf5Group, videoFolderPath):
         
         keypoint = keypoint_tool.process_keypoints(videoPath)
 
-        if WRITE:
-            group.create_dataset(str(video_idx), data=keypoint, compression="gzip", compression_opts=4)
+        group.create_dataset(str(video_idx), data=keypoint, compression="gzip", compression_opts=4)
 
 def save_embeddings(hdf5Group, videoFolderPath):
-    if WRITE:
-        group = hdf5Group.require_group("embeddings")
+    group = hdf5Group.require_group("embeddings")
 
     for video_idx, videoName  in enumerate(sorted(os.listdir(videoFolderPath))):
         name, _ = os.path.splitext(videoName)
@@ -42,12 +41,10 @@ def save_embeddings(hdf5Group, videoFolderPath):
         embedding = llm.run(label)
         embedding = embedding.cpu().numpy()
 
-        if WRITE:
-            group.create_dataset(str(video_idx), data=embedding, compression="gzip", compression_opts=4)
+        group.create_dataset(str(video_idx), data=embedding, compression="gzip", compression_opts=4)
 
 def save_labels(hdf5Group, videoFolderPath):
-    if WRITE:
-        group = hdf5Group.require_group("labels")
+    group = hdf5Group.require_group("labels")
 
     for video_idx, videoName  in enumerate(sorted(os.listdir(videoFolderPath))):
         name, _ = os.path.splitext(videoName)
@@ -57,9 +54,8 @@ def save_labels(hdf5Group, videoFolderPath):
 
         label = metaDF.loc[metaDF["id"]==name]["label"].values[0]
 
-        if WRITE:
-            dt = h5py.string_dtype(encoding='utf-8')
-            group.create_dataset(str(video_idx), data=[label], dtype=dt, compression="gzip")
+        dt = h5py.string_dtype(encoding='utf-8')
+        group.create_dataset(str(video_idx), data=[label], dtype=dt, compression="gzip")
 
 if __name__ == "__main__":
     dataPath = os.path.join(main_directory, "data")
