@@ -11,7 +11,6 @@ class PathVariables:
         "study_path",
         "data_path",
         "h5_file",
-        "csv_file",
     )
     _instance = None
 
@@ -46,11 +45,8 @@ class PathVariables:
         self.study_path.mkdir(exist_ok=True)
 
         # Datos
-        dp = bp.parent / "data" / "dataset2"
-        dp = bp.parent / "data" / "dataset2"
+        dp = bp.parent / "data"
         self.data_path = dp
         self.h5_file = dp / "keypoints.h5"
-        self.csv_file = dp / "meta.csv"
-
 
 path_vars = PathVariables()
