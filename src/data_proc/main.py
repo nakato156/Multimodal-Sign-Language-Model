@@ -1,8 +1,6 @@
 import h5py
 import os
 import pandas as pd
-import numpy as np
-import torch
 
 from pre_calculate import LLM
 from keypoints import KeypointProcessing
@@ -12,8 +10,12 @@ main_directory = "/home/giorgio6846/Code/Sign-AI"
 
 def save_keypoints(hdf5Group, videoFolderPath):
     group = hdf5Group.require_group("keypoints")
+    videoList = sorted(os.listdir(videoFolderPath))
 
-    for video_idx, videoName  in enumerate(sorted(os.listdir(videoFolderPath))):
+    print("Keypoints: ", len(videoList))
+    for video_idx, videoName  in enumerate(videoList):
+        print(video_idx)
+
         if str(video_idx) in group:
             continue
         
@@ -25,12 +27,20 @@ def save_keypoints(hdf5Group, videoFolderPath):
         
         keypoint = keypoint_tool.process_keypoints(videoPath)
 
+        print(keypoint.shape)
         group.create_dataset(str(video_idx), data=keypoint, compression="gzip", compression_opts=4)
 
 def save_embeddings(hdf5Group, videoFolderPath):
     group = hdf5Group.require_group("embeddings")
+    videoList = sorted(os.listdir(videoFolderPath))
 
-    for video_idx, videoName  in enumerate(sorted(os.listdir(videoFolderPath))):
+    print("Embeddings: ", len(videoList))
+    for video_idx, videoName  in enumerate(videoList):
+        print(video_idx)
+
+        if str(video_idx) in group:
+            continue
+
         name, _ = os.path.splitext(videoName)
 
         if not metaDF.loc[metaDF["id"]==name].shape[0] == 1:
@@ -45,8 +55,15 @@ def save_embeddings(hdf5Group, videoFolderPath):
 
 def save_labels(hdf5Group, videoFolderPath):
     group = hdf5Group.require_group("labels")
+    videoList = sorted(os.listdir(videoFolderPath))
 
-    for video_idx, videoName  in enumerate(sorted(os.listdir(videoFolderPath))):
+    print("labels: ", len(videoList))
+    for video_idx, videoName  in enumerate(videoList):
+        print(video_idx)
+        
+        if str(video_idx) in group:
+            continue
+
         name, _ = os.path.splitext(videoName)
 
         if not metaDF.loc[metaDF["id"]==name].shape[0] == 1:
@@ -77,11 +94,15 @@ if __name__ == "__main__":
         videoFolderPath = os.path.join(folderPath, "videos")
         metaDF = pd.read_csv(os.path.join(folderPath, "meta.csv"))
 
-        if "keypoints" not in group:
-            save_keypoints(group, videoFolderPath)
+        keypoint_tool.load_model()        
+        save_keypoints(group, videoFolderPath)
+        f.flush()
+        keypoint_tool.unload_model()        
 
-        if "embeddings" not in group:
-            save_embeddings(group, videoFolderPath)
+        llm.load_model()
+        save_embeddings(group, videoFolderPath)
+        f.flush()
+        llm.unload_model()
 
-        if "labels" not in group:
-            save_labels(group, videoFolderPath)
+        save_labels(group, videoFolderPath)
+        f.flush()

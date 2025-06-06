@@ -1,20 +1,20 @@
 import numpy as np
 
 from video_reader import PyVideoReader
-from rtmlib import RTMPose, RTMDet, draw_skeleton, Custom
-from PIL import Image
+from rtmlib import Custom
 import pickle
-import cv2
 import numpy as np
-
-from IPython.display import display
+import gc
+import torch
+from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
 
 DEBUG = False
 
 class KeypointProcessing:
     def __init__(self):
-        backend = 'onnxruntime'
-        device = 'cuda'
+        self.backend = 'onnxruntime'
+        self.device = 'cuda'
         self.openpose= True
 
 #        self.model_pose = RTMPose(onnx_model='https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-l_simcc-ucoco_dw-ucoco_270e-384x288-2438fd99_20230728.zip',
@@ -25,6 +25,7 @@ class KeypointProcessing:
 #                            backend=backend,
 #                            device=device)
 
+    def load_model(self):
         self.model = Custom(
             to_openpose=self.openpose,
             det_class='RTMDet',
@@ -33,43 +34,45 @@ class KeypointProcessing:
             pose_class='RTMPose',
             pose='https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-l_simcc-ucoco_dw-ucoco_270e-384x288-2438fd99_20230728.zip',
             pose_input_size=(288, 384),
-            backend=backend,
-            device=device,
+            backend=self.backend,
+            device=self.device,
         )
+
+    def unload_model(self):
+        del self.model
+        self._cleanup()
+
+    def _cleanup(self):
+        torch.cuda.empty_cache()
+        while gc.collect() != 0:
+            break
 
     def process_keypoints(self, videoPath):
         print("Video: ", videoPath)
         
-        keypoints = []
         try:
-            video_reader = PyVideoReader(videoPath, device='cuda')
+            video_reader = PyVideoReader(videoPath, device='cpu', threads=12)
         except Exception as e:
-            print(f"CUDA failed: {e}\nFalling back to CPU.")
-            video_reader = PyVideoReader(videoPath, device='cpu')
+            #print(f"CUDA failed: {e}\nFalling back to CPU.")
+            video_reader = PyVideoReader(videoPath, device='cuda')
 
-        video = video_reader.decode()
+
+        try:
+            video = video_reader.decode()
+        except Exception as e:        
+            return None
 
         num_frames = len(video)
         print(num_frames)
         
-        for i in range(num_frames):
-#            bboxes = self.model_det(video[i])
-#            keypoint_dict, scores= self.model_pose(video[i], bboxes)
 
-            keypoint_dict, scores= self.model(video[i])
+        def process_single_frame(frame):
+            keypoint_dict, _ = self.model(frame)
+            return keypoint_dict
 
-            keypoints.append(keypoint_dict)
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            keypoints = list(tqdm(executor.map(process_single_frame, video), total=len(video)))   
 
-            #img_show = np.array(video[i], dtype=np.uint8)
-            #img_show = draw_skeleton(img_show, keypoint_dict, scores, kpt_thr=0.5, openpose_skeleton=self.openpose)
-
-            #print(f"Keypoints{[i]}", keypoint_dict)
-            #print(f"Score{[i]}", scores)
-
-            #cv2.imwrite(f"./frames/deb{i}.jpg", img_show)
-
-        #print(keypoints)
-        
         if DEBUG: 
             print("Saving keypoints")
             with open("keypointsTest.pkl", "wb") as kp:
@@ -81,6 +84,15 @@ class KeypointProcessing:
         print("Likely signer:", signer_id, "with total hand movement:", result[signer_id]['total'])
         
         keypoints_array = self.process_frames_to_array(result[signer_id]['frames'])
+
+        del num_frames
+        del video
+        del keypoints
+        del video_reader
+        video_reader = None
+
+        torch.cuda.empty_cache()
+        gc.collect()
 
         return keypoints_array
 
