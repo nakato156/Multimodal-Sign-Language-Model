@@ -1,4 +1,3 @@
-import os
 import torch
 
 from torch.utils.data import DataLoader, random_split
@@ -64,9 +63,9 @@ def build_model(input_size, T_size, output_size, device, compile=True, **kwargs)
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
     return model
 
-def run_training(params, train_dataloader, val_dataloader, embedding_layer, model, PROFILE=False):
+def run_training(params, train_dataloader, val_dataloader, embedding_layer, model, llama_lm_head, PROFILE=False):
     """Configura y ejecuta el entrenamiento."""
-    trainer = Trainer(model, train_dataloader, val_dataloader, embedding_layer, **params)
+    trainer = Trainer(model, llama_lm_head, train_dataloader, val_dataloader, embedding_layer, **params)
     trainer.ckpt_mgr.save_params(params)
 
     if PROFILE:
