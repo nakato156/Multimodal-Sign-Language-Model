@@ -1,5 +1,5 @@
 import torch
-from src.mslm.utils.setup_train import load_llm_components, setup_paths
+from src.mslm.utils.setup_train import setup_paths
 from src.mslm.utils import create_dataloaders, build_model, run_training, prepare_datasets, ConfigLoader
 
 def run(
@@ -9,10 +9,8 @@ def run(
     log_interval: int,
     train_ratio: float = 0.8,
 ):
-    _, _, h5_file, csv_file = setup_paths()
-    embedding_layer, tokenizer, _, _ = load_llm_components()
+    _, _, h5_file = setup_paths()
     device = "cuda" if torch.cuda.is_available() else "cpu"
-
 
     model_parameters = ConfigLoader("config/model/config.toml").load_config()
     model_parameters.update({
@@ -37,13 +35,13 @@ def run(
         "device": device if model_parameters.get("device") == "auto" else model_parameters.get("device", device),
     })
     
-    tr_ds, val_ds = prepare_datasets(h5_file, csv_file, tokenizer,
+    tr_ds, val_ds = prepare_datasets(h5_file,
                                      model_parameters["T_size"],
                                      train_ratio, device)
     tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=4)
 
     model = build_model(**model_parameters)
-    run_training(train_config, tr_dl, val_dl, embedding_layer, model)
+    run_training(train_config, tr_dl, val_dl, model)
 
 if __name__ == "__main__":
     import argparse

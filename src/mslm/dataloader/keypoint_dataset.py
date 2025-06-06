@@ -4,46 +4,26 @@ import numpy as np
 import torch
 
 class KeypointDataset():
-    def __init__(self, h5Path, labelsCSV, max_seq_len, transform = None):
+    def __init__(self, h5Path, transform = None, return_label=False):
         self.h5Path = h5Path
-        self.labelsCSV = labelsCSV
-
-        self.max_seq_len = max_seq_len
         self.transform = transform
+
+        self.return_label = return_label
 
         self.processData()
 
     def processData(self):
-        self.labels = pd.read_csv(self.labelsCSV)
-
         with h5py.File(self.h5Path, 'r') as f:
-            self.clips_ids = list(f.keys())
-            #print(self.clips_ids)
-
-            self.mapping = []
-            for clip in self.clips_ids:
-                clip_group = f[clip]
-                signers = list(clip_group.keys())
-                #print("Clip: ", clip, "\nClip Group:", list(clip_group.keys()))
-
-                for signer in signers:
-                    #print("Signer:", signer)
-
-                    signer_group = clip_group[signer]
-                    #print("Datasets in signer:", list(signer_group.keys()))
-
-                    if "keypoints" in signer_group:
-                        self.mapping.append((clip,signer))
+            datasets  = list(f.keys())
 
             self.valid_index = []
-            for idx, (clip, signer) in enumerate(self.mapping):
-                
-                clip_name = clip.split(".")[0]
-                #dfRow = self.labels.loc[self.labels["id"] == clip_name]56567885678
-                labelRow = self.labels.loc[(self.labels["id"] == clip_name) & (self.labels["infered_signer"] == signer) & (self.labels["duration"] < 30)]
-                
-                if not labelRow.empty:
-                    self.valid_index.append(idx)
+
+            for dataset in datasets:
+                group  = list(f[dataset].keys())
+                clip_ids  = list(f[dataset]["embeddings"].keys())
+
+                for clip in clip_ids:
+                    self.valid_index.append((dataset, clip))
 
     def __len__(self):
         return len(self.valid_index)
@@ -51,33 +31,31 @@ class KeypointDataset():
     def __getitem__(self, idx):
         mapped_idx = self.valid_index[idx]
 
-        clip, signer = self.mapping[mapped_idx]
-        label_row = self.labels.loc[self.labels["id"] == (clip.split(".")[0])]
-        label = label_row['label'].values[0]
-
         with h5py.File(self.h5Path, 'r') as f:
-            keypoint = f[clip][signer]["keypoints"][:]
-            
-            num_frames = keypoint.shape[0]
-            num_joints = keypoint.shape[1] // 4
+            keypoint = f[mapped_idx[0]]["keypoints"][mapped_idx[1]][:]
+            embedding = f[mapped_idx[0]]["embeddings"][mapped_idx[1]][:]
+        
+            if self.return_label:
+                label = f[mapped_idx[0]]["labels"][mapped_idx[1]][:][0].decode()
 
-            keypoint = keypoint.reshape(num_frames, num_joints, 4)
-            #print(keypoint.shape)
-            keypoint = keypoint[:,:,:2]
-            #print(keypoint.shape)
-
-        if num_frames > self.max_seq_len:
-            keypoint = keypoint[:self.max_seq_len]
-        elif num_frames < self.max_seq_len:
-            padding = np.zeros((self.max_seq_len - num_frames, num_joints, 2)) 
-            keypoint = np.concatenate([keypoint, padding], axis = 0)
-
-        #Change nan to 0
-        keypoint = np.nan_to_num(keypoint, 0)
-
-        if self.transform:
-            keypoint = self.transform(keypoint)
-
+        #Keypoints a Tensor
         keypoint = torch.tensor(keypoint, dtype=torch.float32)
 
-        return keypoint, label
+        flat = keypoint.view(-1, 2)
+        global_mins, _ = flat.min(dim=0)
+        global_maxs, _ = flat.max(dim=0)
+
+        global_ranges = global_maxs - global_mins
+        global_ranges[global_ranges == 0] = 1.0
+
+        gm = global_mins.unsqueeze(0).unsqueeze(0)
+        gr = global_ranges.unsqueeze(0).unsqueeze(0)
+
+        keypoint_normalized = (keypoint - gm) / gr
+
+        # print(keypoint.size())
+
+        if self.return_label:
+            return keypoint_normalized, embedding, label
+
+        return keypoint_normalized, embedding, None

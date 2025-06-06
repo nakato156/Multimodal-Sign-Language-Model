@@ -18,21 +18,12 @@ def setup_paths():
     data_path = path_vars.data_path
     model_path = path_vars.model_path
     h5_file = path_vars.h5_file
-    csv_file = path_vars.csv_file
-    return data_path, model_path, h5_file, csv_file
+    return data_path, model_path, h5_file
 
-def load_llm_components():
-    """Carga el embedding layer y el tokenizer usando llm_tools."""
-    llm_tools = Tools()
-    embedding_layer, tokenizer = llm_tools.getLLM()
-    vocab_size, d_model = embedding_layer.weight.size()
-    print(f"Vocab size: {vocab_size}, d_model: {d_model}")
-    return embedding_layer, tokenizer, vocab_size, d_model
-
-def prepare_datasets(h5File, csvFile, tokenizer, max_seq_len, train_ratio, device):
+def prepare_datasets(h5File, train_ratio, device):
     """Carga el dataset base, lo envuelve y lo divide en entrenamiento y validación."""
-    keypoint_reader = KeypointDataset(h5Path=h5File, labelsCSV=csvFile, max_seq_len=max_seq_len)
-    dataset = SignDataLoader(tokenizer, keypoint_reader, device)
+    keypoint_reader = KeypointDataset(h5Path=h5File, return_label=False)
+    dataset = SignDataLoader(keypoint_reader, device)
 
     keypoint_readerSize = len(keypoint_reader)
     train_size = int(keypoint_readerSize * train_ratio)
