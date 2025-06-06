@@ -5,11 +5,10 @@ import torch.nn as nn
 from torch import autocast, GradScaler
 from torch.optim import AdamW
 from torch.utils.tensorboard import SummaryWriter
-import torch.nn.functional as F
 
 from src.mslm.utils.early_stopping import EarlyStopping
 from src.mslm.checkpoint.manager import CheckpointManager
-
+from src.mslm.training import ImitatorLoss
 import nvtx
 
 class Trainer:
@@ -21,8 +20,8 @@ class Trainer:
         self.learning_rate = kwargs.get("learning_rate", 1e-4)
         self.log_interval = kwargs.get("log_interval", 5)
         self.checkpoint_interval = kwargs.get("checkpoint_interval", 5)
+        self.lm_head = llama_lm_head
         self.embed_layer = embedding_layer.to(self.device)
-
         self.model = model.to(self.device)
         self.ckpt_mgr = CheckpointManager(
             kwargs.get("model_dir", "../outputs/checkpoints"),
@@ -33,9 +32,9 @@ class Trainer:
         self.val_loader = val_loader
         self.writer = SummaryWriter("../outputs/reports/")
         self.scaler = GradScaler(device=self.device)
-        self.early_stopping = EarlyStopping(patience=5)
+        self.early_stopping = EarlyStopping(patience=100)
 
-        self.criterion = nn.MSELoss()
+        self.criterion = ImitatorLoss(use_ce=True, lm_head=self.lm_head, ce_weight=1.0).to(self.device)
 
         if torch.cuda.get_device_capability()[0] >= 8:
             torch.set_default_dtype(torch.bfloat16)
@@ -51,14 +50,7 @@ class Trainer:
             val_loss: float, loss de validación
         """
         optimizer = AdamW(self.model.parameters(), lr=self.learning_rate, weight_decay=1e-3)
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            optimizer,
-            max_lr=1e-3,
-            anneal_strategy="cos",
-            epochs=self.epochs,
-            steps_per_epoch=len(self.train_loader),
-            pct_start=0.3,
-        )
+        scheduler = None  # Placeholder for learning rate scheduler
 
         train_loss = 0
         val_loss = 0
@@ -87,15 +79,12 @@ class Trainer:
 
             with nvtx.annotate("Training", color="blue"):
                 #Change to bfloat16 if the GPU used is with Ampere Architecture or Higher
-                if torch.cuda.get_device_capability()[0] >= 8:
-                    with autocast(device_type=self.device, dtype=torch.bfloat16):
-                        output = self.model(data)
-                        loss = self.criterion(output, embeddings)
-                else:
-                    with autocast(device_type=self.device):
-                        output = self.model(data)
-                        loss = self.criterion(output, embeddings)
-            
+                dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None
+
+                with autocast(device_type=self.device, dtype=dtype):
+                    output = self.model(data)
+                    loss = self.criterion(output, embeddings, input_ids)
+
             with nvtx.annotate("Backward Pass", color="blue"):
                 total_loss += loss.detach()
                 final_loss = total_loss.item()
@@ -107,12 +96,13 @@ class Trainer:
                 
                 self.scaler.step(optimizer)
                 self.scaler.update()
-                scheduler.step(epoch)
+                if scheduler:
+                    scheduler.step()
 
         torch.cuda.empty_cache()
 
         if epoch % self.log_interval == 0:
-            print("\nEpoch: ", epoch, ".\t Total loss: ", final_loss/len(self.train_loader))
+            tqdm.write(f"\nEpoch: {epoch}.\t Total loss: {final_loss/len(self.train_loader)}")
 
         if epoch == 1:
             self.ckpt_mgr.save_model(self.model, 1)
@@ -140,7 +130,7 @@ class Trainer:
                     
                 final_val_loss = val_loss.item() / len(self.val_loader)
                 if epoch % self.log_interval == 0:
-                    print(f"Validation Loss: {final_val_loss}" )
+                    tqdm.write(f"Validation Loss: {final_val_loss}" )
                 
                 self.early_stopping(final_val_loss)
                 if self.early_stopping.stop:
