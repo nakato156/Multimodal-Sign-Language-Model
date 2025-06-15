@@ -47,6 +47,6 @@ class PathVariables:
         # Datos
         dp = bp.parent / "data"
         self.data_path = dp
-        self.h5_file = dp / "keypoints.h5"
+        self.h5_file = dp / "dataset.hdf5"
 
 path_vars = PathVariables()

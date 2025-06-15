@@ -8,11 +8,11 @@ from torch.utils.tensorboard import SummaryWriter
 
 from src.mslm.utils.early_stopping import EarlyStopping
 from src.mslm.checkpoint.manager import CheckpointManager
-from src.mslm.training import ImitatorLoss
+from src.mslm.training import imitator_loss
 import nvtx
 
 class Trainer:
-    def __init__(self, model, llama_lm_head, train_loader, val_loader, embedding_layer, **kwargs):
+    def __init__(self, model, train_loader, val_loader, **kwargs):
         self.LOG = kwargs.get("log", False)
         
         self.device = kwargs.get("device", "cuda")
@@ -20,8 +20,6 @@ class Trainer:
         self.learning_rate = kwargs.get("learning_rate", 1e-4)
         self.log_interval = kwargs.get("log_interval", 5)
         self.checkpoint_interval = kwargs.get("checkpoint_interval", 5)
-        self.lm_head = llama_lm_head
-        self.embed_layer = embedding_layer.to(self.device)
         self.model = model.to(self.device)
         self.ckpt_mgr = CheckpointManager(
             kwargs.get("model_dir", "../outputs/checkpoints"),
@@ -34,7 +32,7 @@ class Trainer:
         self.scaler = GradScaler(device=self.device)
         self.early_stopping = EarlyStopping(patience=100)
 
-        self.criterion = ImitatorLoss(use_ce=True, lm_head=self.lm_head, ce_weight=1.0).to(self.device)
+        self.criterion = imitator_loss
 
         if torch.cuda.get_device_capability()[0] >= 8:
             torch.set_default_dtype(torch.bfloat16)
@@ -69,21 +67,24 @@ class Trainer:
         self.model.train()
         total_loss = 0
 
-        for data, input_ids in self.train_loader:
+        for data, mask_frames, embeddings, mask_embeddings in self.train_loader:
             optimizer.zero_grad(set_to_none=True)
 
             with nvtx.annotate("Data to CUDA", color="yellow"):
                 data = data.to(self.device)
-                input_ids = input_ids.to(self.device)
-                embeddings = self.embed_layer(input_ids)
+                embeddings = embeddings.to(self.device)
+                mask_frames = mask_frames.to(self.device)
+                mask_embeddings = mask_embeddings.to(self.device)
 
             with nvtx.annotate("Training", color="blue"):
                 #Change to bfloat16 if the GPU used is with Ampere Architecture or Higher
                 dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None
 
                 with autocast(device_type=self.device, dtype=dtype):
-                    output = self.model(data)
-                    loss = self.criterion(output, embeddings, input_ids)
+                    output = self.model(data, mask_frames)
+                    # print(mask_embeddings.shape, embeddings.shape, output.shape)
+
+                    loss = self.criterion(output, embeddings, mask_embeddings)
 
             with nvtx.annotate("Backward Pass", color="blue"):
                 total_loss += loss.detach()
@@ -116,13 +117,14 @@ class Trainer:
                 self.model.eval()
                 val_loss = 0
                 
-                for data, input_ids in self.val_loader:
+                for data, mask_frames, embeddings, mask_embeddings in self.val_loader:
                     data = data.to(self.device)
-                    input_ids = input_ids.to(self.device)
-                    embeddings = self.embed_layer(input_ids)
-
-                    output = self.model(data)
-                    loss = self.criterion(output.to(dtype=torch.bfloat16), embeddings)
+                    embeddings = embeddings.to(self.device)
+                    mask_frames = mask_frames.to(self.device)
+                    mask_embeddings = mask_embeddings.to(self.device)
+                                        
+                    output = self.model(data, mask_frames)
+                    loss = self.criterion(output.to(dtype=torch.bfloat16), embeddings, mask_embeddings)
                     val_loss += loss.detach()
 
                     # del output, data, embeddings, cos_sim

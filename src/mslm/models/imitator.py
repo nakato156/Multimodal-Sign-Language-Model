@@ -6,32 +6,27 @@ import torch.nn.functional as F
 class Imitator(nn.Module):
     def __init__(
         self,
-        input_size: int = 1086,
+        input_size: int = 250*2,
         hidden_size: int = 512,
-        T_size: int = 525,
         output_size: int = 3072,
         nhead: int = 8,
-        ff_dim: int = 3136,
+        ff_dim: int = 1024,
         n_layers: int = 2,
-        pool_dim: int = 128,
+        max_seq_length: int = 301,
     ):
         super().__init__()
-
+        
         self.cfg = {
             "input_size": input_size,
             "hidden_size": hidden_size,
-            "T_size": T_size,
             "output_size": output_size,
             "nhead": nhead,
             "ff_dim": ff_dim,
             "n_layers": n_layers,
-            "pool_dim": pool_dim
+            "max_seq_length": max_seq_length
         }
-        
-
 
         # --- Bloque de entrada ---
-        self.giorgio = nn.AdaptiveAvgPool1d(output_size=128)  # Giorgio es un pooler que maneja los frames variables de entrada
 
         self.linear_feat = nn.Sequential(
             nn.Linear(input_size, hidden_size),
@@ -41,12 +36,14 @@ class Imitator(nn.Module):
             nn.LayerNorm(hidden_size // 2)
         )
 
+        pool_dim = 256
         self.linear_seq = nn.Sequential(
-            nn.Conv1d(hidden_size//2, 128, kernel_size=3, padding=1),
-            nn.LayerNorm(pool_dim),
+            nn.Conv1d(hidden_size//2, pool_dim, kernel_size=3, padding=1),
+            nn.BatchNorm1d(pool_dim),
             nn.GELU(),
-            nn.Linear(pool_dim, pool_dim),
-            nn.LayerNorm(pool_dim)
+            nn.Conv1d(pool_dim, pool_dim, kernel_size=1),
+            nn.BatchNorm1d(pool_dim),
+            nn.GELU(),
         )
     
         # Volvemos a hidden_size
@@ -66,21 +63,38 @@ class Imitator(nn.Module):
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
 
         # Proyección final por paso de tiempo
-        self.proj = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, output_size),
+        self.proj = nn.Linear(hidden_size, output_size)
+
+
+        self.token_queries = nn.Parameter(torch.randn(max_seq_length, output_size))  # [1, output_size]
+        # Queries = E_tokens [n_tokens × B × d], Keys/Values = frames_repr [T' × B × d]
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=output_size,
+            num_heads=nhead,
+            dropout=0.1,
+            batch_first=True,
         )
 
-    def forward(self, x:torch.Tensor) -> torch.Tensor:
-        B, T, D, C = x.shape
-        # x -> [batch_size, T, input_size]
-        x = x.view(B, T,  D * C)            # [B, T, input_size]
+        self.norm_attn = nn.LayerNorm(output_size)
+
+        self.proj_final = nn.Sequential(
+            nn.LayerNorm(output_size),
+            nn.GELU(),
+            nn.Linear(output_size, output_size),
+        )
+
+    def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor=None) -> torch.Tensor:
+        """
+        x: Tensor of frames
+        returns: Tensor of embeddings for each token (128 tokens of frames)
+        """
+        B, T, D, K = x.shape                # x -> [batch_size, T, input_size]
+        x = x.view(B, T,  D * K)            # [B, T, input_size]
         
         x = self.linear_feat(x)             # [B, T, hidden//2]
 
         x = x.transpose(1, 2)               # [B, hidden//2, T]
-        x = self.giorgio(x)                 # Giorgio -> [B, hidden//2, 525]
+        # se mantiene T' = T o reducirdo a pool_dim
         x  = self.linear_seq(x)             # [B, hidden//2, pool_dim]
         x = x.transpose(1, 2)               # [B, pool_dim, hidden//2]
 
@@ -89,7 +103,22 @@ class Imitator(nn.Module):
         x = F.relu(x)                       # [B, pool_dim, hidden]
 
         x = self.pe(x)
-        x = self.transformer(x)             # [B, pool_dim, hidden]
+        x = self.transformer(
+            x,
+            src_key_padding_mask=frames_padding_mask
+        )             # [B, pool_dim, hidden]
 
-        x = self.proj(x)                    # [B, pool_dim, output_size]
+        M = self.proj(x)                    # [B, pool_dim, output_size]
+
+        Q = self.token_queries.unsqueeze(0).expand(B, -1, -1)   # [B, n_tokens, output_size]
+        
+        attn_out, attn_w = self.cross_attn(
+            query=Q,
+            key=M,
+            value=M,
+            key_padding_mask=frames_padding_mask
+        )  # [B, n_tokens, output_size]
+        attn_out = self.norm_attn(attn_out)
+        # print(f"Attention output shape: {attn_out.shape}, Q shape: {Q.shape}, M shape: {M.shape}")
+        x = self.proj_final(attn_out)        # [B, n_tokens, output_size]
         return x

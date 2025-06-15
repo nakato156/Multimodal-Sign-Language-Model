@@ -1,6 +1,4 @@
 import h5py
-import pandas as pd
-import numpy as np
 import torch
 
 class KeypointDataset():
@@ -56,6 +54,6 @@ class KeypointDataset():
         # print(keypoint.size())
 
         if self.return_label:
-            return keypoint_normalized, embedding, label
+            return keypoint_normalized, torch.tensor(embedding), label
 
-        return keypoint_normalized, embedding, None
+        return keypoint_normalized, torch.tensor(embedding), None
