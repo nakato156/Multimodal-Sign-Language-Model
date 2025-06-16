@@ -2,7 +2,6 @@ import torch._inductor.config
 from tqdm import tqdm
 
 import torch
-import torch.nn as nn
 from torch import autocast, GradScaler
 from torch.optim import AdamW
 from torch.utils.tensorboard import SummaryWriter
@@ -37,13 +36,7 @@ class Trainer:
 
         self.criterion = imitator_loss
 
-        if torch.cuda.get_device_capability()[0] >= 8:
-            torch.set_default_dtype(torch.bfloat16)
-        else:
-            torch.set_default_dtype(torch.float8)
-
-    @torch.compile(dynamic=True)
-    @nvtx.annotate("Start Training", color="green")
+    @nvtx.annotate("Training Section", color="green")
     def train(self):
         """Entrena el modelo Imitator.
         returns:
@@ -87,7 +80,7 @@ class Trainer:
                 mask_frames = mask_frames.to(self.device)
                 mask_embeddings = mask_embeddings.to(self.device)
 
-            with nvtx.annotate("Training", color="blue"):
+            with nvtx.annotate("Forward Pass", color="blue"):
                 #Change to bfloat16 if the GPU used is with Ampere Architecture or Higher
                 dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None
 
@@ -122,6 +115,7 @@ class Trainer:
             self.ckpt_mgr.save_model(self.model, epoch)
         return final_loss
 
+    @nvtx.annotate("Validation Section", color="blue")
     def _validate(self, epoch):
         with nvtx.annotate("Prueba de Validacion", color="blue"):
             with torch.no_grad():

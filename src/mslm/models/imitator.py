@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from .components.positional_encoding import PositionalEncoding
 import torch.nn.functional as F
+import torch.utils.checkpoint as checkpoint
 
 class Imitator(nn.Module):
     def __init__(
@@ -83,6 +84,7 @@ class Imitator(nn.Module):
             nn.Linear(output_size, output_size),
         )
 
+    @torch.compile(dynamic=True)
     def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor=None) -> torch.Tensor:
         """
         x: Tensor of frames
@@ -98,7 +100,10 @@ class Imitator(nn.Module):
         x  = self.linear_seq(x)             # [B, hidden//2, pool_dim]
         x = x.transpose(1, 2)               # [B, pool_dim, hidden//2]
 
-        x = self.linear_hidden(x)           # [B, pool_dim, hidden]
+        x = checkpoint.checkpoint(
+            self.linear_hidden, x, use_reentrant=False
+        )           # [B, pool_dim, hidden]
+
         x = self.norm4(x)                   # [B, pool_dim, hidden]
         x = F.relu(x)                       # [B, pool_dim, hidden]
 

@@ -21,7 +21,6 @@ def setup_paths():
 def prepare_datasets(h5File, train_ratio, device):
     """Carga el dataset base, lo envuelve y lo divide en entrenamiento y validación."""
     keypoint_reader = KeypointDataset(h5Path=h5File, return_label=False)
-    # dataset = SignDataLoader(keypoint_reader, device)
 
     train_dataset, validation_dataset = random_split(keypoint_reader, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
     print(f"Train size:\t{len(train_dataset)}\nValidation size:\t{len(validation_dataset)}")
