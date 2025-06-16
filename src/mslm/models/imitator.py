@@ -57,7 +57,7 @@ class Imitator(nn.Module):
             nhead=nhead,
             dim_feedforward=ff_dim,
             batch_first=True,
-            dropout=0.1,
+            dropout=0.2,
             norm_first=True
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)

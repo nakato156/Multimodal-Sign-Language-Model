@@ -12,6 +12,7 @@ outputs/
 *.qdstrn
 *.nsys-rep
 profile.sh
+*.db
 
 nk_*
 *.pickle

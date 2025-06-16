@@ -1,3 +1,4 @@
+import torch._inductor.config
 from tqdm import tqdm
 
 import torch
@@ -10,6 +11,8 @@ from src.mslm.utils.early_stopping import EarlyStopping
 from src.mslm.checkpoint.manager import CheckpointManager
 from src.mslm.training import imitator_loss
 import nvtx
+
+torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
 
 class Trainer:
     def __init__(self, model, train_loader, val_loader, **kwargs):
@@ -39,7 +42,7 @@ class Trainer:
         else:
             torch.set_default_dtype(torch.float8)
 
-    @torch.compile
+    @torch.compile(dynamic=True)
     @nvtx.annotate("Start Training", color="green")
     def train(self):
         """Entrena el modelo Imitator.
@@ -47,15 +50,23 @@ class Trainer:
             train_loss: float, loss de entrenamiento
             val_loss: float, loss de validación
         """
+        print("LR:", self.learning_rate)
         optimizer = AdamW(self.model.parameters(), lr=self.learning_rate, weight_decay=1e-3)
-        scheduler = None  # Placeholder for learning rate scheduler
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='min',
+            factor=0.5,
+            patience=2,
+            min_lr=1e-7
+        )
 
         train_loss = 0
         val_loss = 0
 
         for epoch in tqdm(range(self.epochs), desc="Entrenando", colour="green"):
-            train_loss = self._train_epoch(epoch, optimizer, scheduler)
+            train_loss = self._train_epoch(epoch, optimizer, scheduler=None)
             val_loss = self._validate(epoch)
+            scheduler.step(val_loss)
             if self.early_stopping.stop:
                 break
         return train_loss, val_loss
@@ -63,7 +74,7 @@ class Trainer:
     def distributed_train(self):
         raise NotImplementedError("Gorgo is thinking")
 
-    def _train_epoch(self, epoch, optimizer, scheduler):
+    def _train_epoch(self, epoch, optimizer, scheduler=None):
         self.model.train()
         total_loss = 0
 
@@ -110,7 +121,7 @@ class Trainer:
         elif (epoch % self.checkpoint_interval == 0 and epoch != 0) or (epoch == self.epochs - 1):
             self.ckpt_mgr.save_model(self.model, epoch)
         return final_loss
-    
+
     def _validate(self, epoch):
         with nvtx.annotate("Prueba de Validacion", color="blue"):
             with torch.no_grad():
@@ -137,4 +148,5 @@ class Trainer:
                 self.early_stopping(final_val_loss)
                 if self.early_stopping.stop:
                     self.ckpt_mgr.save_model(self.model, epoch)
+                
                 return final_val_loss
