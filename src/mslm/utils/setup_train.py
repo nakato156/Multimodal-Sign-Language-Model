@@ -5,8 +5,7 @@ from torch.utils.data import DataLoader, random_split
 #Imported Classes
 from src.mslm.models import Imitator
 from src.mslm.training import Trainer
-from src.mslm.dataloader import KeypointDataset, SignDataLoader, collate_fn
-from src.mslm.utils.llm_tools import Tools
+from src.mslm.dataloader import KeypointDataset, collate_fn
 from src.mslm.utils.paths import path_vars
 
 #Profilers
@@ -22,7 +21,6 @@ def setup_paths():
 def prepare_datasets(h5File, train_ratio, device):
     """Carga el dataset base, lo envuelve y lo divide en entrenamiento y validación."""
     keypoint_reader = KeypointDataset(h5Path=h5File, return_label=False)
-    # dataset = SignDataLoader(keypoint_reader, device)
 
     train_dataset, validation_dataset = random_split(keypoint_reader, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
     print(f"Train size:\t{len(train_dataset)}\nValidation size:\t{len(validation_dataset)}")

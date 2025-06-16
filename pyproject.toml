@@ -44,3 +44,7 @@ env = { PYTHONPATH = "." }
 [tool.poe.tasks.embed]
 cmd = "python scripts/pre_calculate.py"
 env = { PYTHONPATH = "." }
+
+[tool.poe.tasks.profile]
+cmd = "python scripts/train_profile.py --epochs 10 --batch_size 8"
+env = { PYTHONPATH = "." }
