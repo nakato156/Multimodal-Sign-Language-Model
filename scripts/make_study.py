@@ -66,4 +66,5 @@ if __name__ == "__main__":
     parser.add_argument("--train_ratio", type=float, default=0.8, help="Ratio of training data.")
     args = parser.parse_args()
 
+    print(f"Running study with {args.n_trials} trials, batch size {args.batch_size}, train ratio {args.train_ratio}")
     run(args.n_trials, args.batch_size, args.train_ratio)
