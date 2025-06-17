@@ -8,6 +8,7 @@ def run(
     checkpoint_interval: int,
     log_interval: int,
     train_ratio: float = 0.8,
+    profile_pytorch: bool = False
 ):
     _, _, h5_file = setup_paths()
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -37,7 +38,7 @@ def run(
     tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=4)
 
     model = build_model(**model_parameters)
-    run_training(train_config, tr_dl, val_dl, model, PROFILE=True)
+    run_training(train_config, tr_dl, val_dl, model, profile_pytorch=profile_pytorch)
 
 if __name__ == "__main__":
     import argparse
@@ -47,6 +48,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training.")
     parser.add_argument("--checkpoint_interval", type=int, default=5, help="Interval for saving checkpoints.")
     parser.add_argument("--log_interval", type=int, default=2, help="Interval for logging training progress.")
+    parser.add_argument("--profile_pytorch", type=bool, default=False, help="Interval for pytorch profiling.")
     args = parser.parse_args()
 
-    run(args.epochs, args.batch_size, args.checkpoint_interval, args.log_interval)
+    run(args.epochs, args.batch_size, args.checkpoint_interval, args.log_interval, args.profile_pytorch)

@@ -81,6 +81,7 @@ if __name__ == "__main__":
     f = h5py.File(os.path.join(dataPath, "dataset.hdf5"), 'a')
 
     for Folder in os.listdir(dataPath):
+        print(Folder)
         folderPath = os.path.join(dataPath, Folder)
 
         if not os.path.isdir(folderPath):
