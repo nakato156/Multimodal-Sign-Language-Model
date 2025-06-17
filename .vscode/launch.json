@@ -5,11 +5,18 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug Training",
+            "name": "Debug Poe Train (Conda)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/train_CUDA.py",
-            "console": "integratedTerminal"
+            "program": "/home/giorgio6846/Code/Sign-AI/Sign-Multimodal-Language-Model/.conda/bin/poe",
+            "args": ["train"],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "CONDA_DEFAULT_ENV": "Sign-Multimodal-Language-Model",
+                "CONDA_PREFIX": "/home/giorgio6846/Code/Sign-AI/Sign-Multimodal-Language-Model/.conda",
+                "PATH": "/home/giorgio6846/Code/Sign-AI/Sign-Multimodal-Language-Model/.conda/bin:${env:PATH}"
+            }
         }
     ]
 }

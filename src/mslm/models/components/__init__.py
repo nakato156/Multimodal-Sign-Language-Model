@@ -1,2 +1,2 @@
 from .positional_encoding import PositionalEncoding
-from .stgcn import STGCN
+#from .stgcn import STGCN

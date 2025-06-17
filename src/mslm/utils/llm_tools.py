@@ -14,6 +14,9 @@ class Tools:
 
         # Obtener capa de embeddings
         self.embedding_layer = model.get_input_embeddings()
+
+        # obtener lm_head
+        self.lm_head = model.lm_head
         del model
         self._cleanup()
 

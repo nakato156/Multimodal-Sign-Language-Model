@@ -11,7 +11,7 @@ outputs/
 #Model profiling and debugging
 *.qdstrn
 *.nsys-rep
-profile.sh
+*.db
 
 nk_*
 *.pickle

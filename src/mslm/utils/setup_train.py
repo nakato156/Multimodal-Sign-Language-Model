@@ -1,4 +1,3 @@
-import os
 import torch
 
 from torch.utils.data import DataLoader, random_split
@@ -6,12 +5,13 @@ from torch.utils.data import DataLoader, random_split
 #Imported Classes
 from src.mslm.models import Imitator
 from src.mslm.training import Trainer
-from src.mslm.dataloader import KeypointDataset, SignDataLoader, collate_fn
-from src.mslm.utils.llm_tools import Tools
+from src.mslm.dataloader import KeypointDataset, collate_fn
 from src.mslm.utils.paths import path_vars
 
 #Profilers
 from torch.profiler import profile, ProfilerActivity
+import os
+import datetime
 
 def setup_paths():
     """Define y retorna las rutas necesarias para datos y modelos."""
@@ -23,13 +23,8 @@ def setup_paths():
 def prepare_datasets(h5File, train_ratio, device):
     """Carga el dataset base, lo envuelve y lo divide en entrenamiento y validación."""
     keypoint_reader = KeypointDataset(h5Path=h5File, return_label=False)
-    dataset = SignDataLoader(keypoint_reader, device)
 
-    keypoint_readerSize = len(keypoint_reader)
-    train_size = int(keypoint_readerSize * train_ratio)
-    validation_size = keypoint_readerSize - train_size
-
-    train_dataset, validation_dataset = random_split(dataset, [train_size, validation_size])
+    train_dataset, validation_dataset = random_split(keypoint_reader, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
     print(f"Train size:\t{len(train_dataset)}\nValidation size:\t{len(validation_dataset)}")
     return train_dataset, validation_dataset
 
@@ -55,27 +50,28 @@ def create_dataloaders(train_dataset, validation_dataset, batch_size, num_worker
     )
     return train_dataloader, val_dataloader
 
-def build_model(input_size, T_size, output_size, device, compile=True, **kwargs):
+def build_model(input_size, output_size, device, compile=True, **kwargs):
     """Construye, compila y retorna el modelo Imitator."""
-    model = Imitator(input_size=input_size, T_size=T_size, output_size=output_size, **kwargs).to(device)
+    model = Imitator(input_size=input_size, output_size=output_size, **kwargs).to(device)
     if compile:
         model = torch.compile(model, backend="inductor", mode="reduce-overhead")
     print(model)
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
     return model
 
-def run_training(params, train_dataloader, val_dataloader, embedding_layer, model, PROFILE=False):
+def run_training(params, train_dataloader, val_dataloader, model, profile_pytorch=False):
     """Configura y ejecuta el entrenamiento."""
-    trainer = Trainer(model, train_dataloader, val_dataloader, embedding_layer, **params)
+    trainer = Trainer(model, train_dataloader, val_dataloader, **params)
     trainer.ckpt_mgr.save_params(params)
 
-    if PROFILE:
+    if profile_pytorch:
         print("Starting training with profiling...")
         with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
                     record_shapes=True,
                     with_stack=True,
                     profile_memory=True) as p:
             trainer.train()
+        p.export_memory_timeline(f"../outputs/profile/{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")    
     else:
         print("Starting training...")
         return trainer.train()

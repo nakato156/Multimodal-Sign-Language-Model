@@ -1,24 +1,32 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class ImitatorLoss(nn.Module):
+def imitator_loss(pred_embs: torch.Tensor, target_embs: torch.Tensor, embedding_mask: torch.Tensor = None) -> torch.Tensor:
+    """
+    Args:
+        pred_embs: Tensor of shape (batch_size, seq_len, emb_dim)
+        target_embs: Tensor of shape (batch_size, seq_len, emb_dim)
+        embedding_mask: Tensor of shape (batch_size, seq_len) indicating valid positions (True for valid, False for invalid).
+                        If None, all positions are considered valid.
+    Returns:
+        loss: Tensor of shape (batch_size, seq_len)
+    """
+    # align the lengths of the sequences
+    L_pred   = pred_embs.size(1)
+    L_targ   = target_embs.size(1)
+    L_common = min(L_pred, L_targ)
+    pred_embs     = pred_embs   [:, :L_common]
+    target_embs   = target_embs [:, :L_common]
+    embedding_mask = embedding_mask[:, :L_common]
 
-    def __init__(self, alpha=1.0, beta=1.0):
-        """
-        Combina L2 (MSE) y CosineEmbeddingLoss:
-        total_loss = alpha * L2 + beta * (1 - cos_similarity)
-        """
-        super().__init__()
+    # Compute the L2 loss
+    mse_per_element = F.mse_loss(pred_embs, target_embs, reduction='none')
 
-        self.alpha = alpha
-        self.beta = beta
-        self.cos_sim = nn.CosineSimilarity(dim=-1)
+    mse_per_token = mse_per_element.mean(dim=-1)
 
-    def forward(self, pred, target):
-        l2 = F.mse_loss(pred, target)
+    valid = ~embedding_mask
 
-        # cosine_sim = self.cos_sim(F.normalize(pred, p=2, dim=-1), F.normalize(target, p=2, dim=-1))
-        # cosine_loss = 1 - cosine_sim.mean()
+    loss = (mse_per_token * valid).sum() / valid.sum()
 
-        # return (self.alpha * l2) + (self.beta * cosine_loss)
-        return l2
+    return loss
