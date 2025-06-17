@@ -2,11 +2,13 @@ import h5py
 import torch
 
 class KeypointDataset():
-    def __init__(self, h5Path, transform = None, return_label=False):
+    def __init__(self, h5Path, transform = None, return_label=False, max_length=7000):
         self.h5Path = h5Path
         self.transform = transform
 
         self.return_label = return_label
+
+        self.max_length = max_length
 
         self.processData()
 
@@ -17,11 +19,13 @@ class KeypointDataset():
             self.valid_index = []
 
             for dataset in datasets:
+                
                 group  = list(f[dataset].keys())
                 clip_ids  = list(f[dataset]["embeddings"].keys())
 
                 for clip in clip_ids:
-                    self.valid_index.append((dataset, clip))
+                    if f[dataset]["keypoints"][clip][:].shape[0] < self.max_length:
+                        self.valid_index.append((dataset, clip))
 
     def __len__(self):
         return len(self.valid_index)

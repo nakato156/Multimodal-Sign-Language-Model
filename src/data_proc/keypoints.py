@@ -8,6 +8,7 @@ import gc
 import torch
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
+import cv2
 
 DEBUG = False
 
@@ -49,47 +50,46 @@ class KeypointProcessing:
 
     def process_keypoints(self, videoPath):
         print("Video: ", videoPath)
-        
+
+        chunk_size = 1000
+
         try:
             video_reader = PyVideoReader(videoPath, device='cpu', threads=12)
         except Exception as e:
             #print(f"CUDA failed: {e}\nFalling back to CPU.")
             video_reader = PyVideoReader(videoPath, device='cuda')
 
+        video_length = video_reader.get_shape()[0]
+        all_keypoints = []    
 
-        try:
-            video = video_reader.decode()
-        except Exception as e:        
-            return None
-
-        num_frames = len(video)
-        print(num_frames)
-        
-
-        def process_single_frame(frame):
+        def process_single_frame(frame_rgb):
+            frame = cv2.cvtColor(frame_rgb, cv2.COLOR_BGR2RGB)
             keypoint_dict, _ = self.model(frame)
             return keypoint_dict
 
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            keypoints = list(tqdm(executor.map(process_single_frame, video), total=len(video)))   
+
+        for start in range(0, video_length, chunk_size):
+            end = min(start + chunk_size, video_length)
+            frames = video_reader.decode_fast(start_frame=start, end_frame=end)
+
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                chunk_kp = list(tqdm(executor.map(process_single_frame, frames), total=len(frames),
+                 desc=f"Frames {start}-{end-1}"))   
+            all_keypoints.extend(chunk_kp)
 
         if DEBUG: 
             print("Saving keypoints")
             with open("keypointsTest.pkl", "wb") as kp:
-                pickle.dump(keypoints, kp)
+                pickle.dump(all_keypoints, kp)
             print("Keypoints saved")
         
-        result = self.compute_person_movement(keypoints)
+        result = self.compute_person_movement(all_keypoints)
         signer_id = max(result.items(), key=lambda x: x[1]['total'])[0]
         print("Likely signer:", signer_id, "with total hand movement:", result[signer_id]['total'])
         
         keypoints_array = self.process_frames_to_array(result[signer_id]['frames'])
 
-        del num_frames
-        del video
-        del keypoints
         del video_reader
-        video_reader = None
 
         torch.cuda.empty_cache()
         gc.collect()

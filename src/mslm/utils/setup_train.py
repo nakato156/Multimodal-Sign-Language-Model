@@ -10,6 +10,8 @@ from src.mslm.utils.paths import path_vars
 
 #Profilers
 from torch.profiler import profile, ProfilerActivity
+import os
+import datetime
 
 def setup_paths():
     """Define y retorna las rutas necesarias para datos y modelos."""
@@ -57,18 +59,19 @@ def build_model(input_size, output_size, device, compile=True, **kwargs):
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
     return model
 
-def run_training(params, train_dataloader, val_dataloader, model, PROFILE=False):
+def run_training(params, train_dataloader, val_dataloader, model, profile_pytorch=False):
     """Configura y ejecuta el entrenamiento."""
     trainer = Trainer(model, train_dataloader, val_dataloader, **params)
     trainer.ckpt_mgr.save_params(params)
 
-    if PROFILE:
+    if profile_pytorch:
         print("Starting training with profiling...")
         with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
                     record_shapes=True,
                     with_stack=True,
                     profile_memory=True) as p:
             trainer.train()
+        p.export_memory_timeline(f"../outputs/profile/{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")    
     else:
         print("Starting training...")
         return trainer.train()
