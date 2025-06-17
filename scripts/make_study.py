@@ -25,7 +25,7 @@ def run(
     train_config = ConfigLoader("config/training/train_config.toml").load_config()
     train_ratio = train_config.get("train_ratio", train_ratio)
     train_config.update({
-        "epochs": n_trials,
+        "epochs": train_config.get("epochs", 8),
         "batch_size": batch_size if batch_size else train_config.get("batch_size", 32),
         "checkpoint_interval": train_config.get("checkpoint_interval", 5),
         "log_interval": train_config.get("log_interval", 2),
