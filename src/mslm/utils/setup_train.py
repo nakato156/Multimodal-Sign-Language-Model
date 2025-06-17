@@ -71,7 +71,7 @@ def run_training(params, train_dataloader, val_dataloader, model, profile_pytorc
                     with_stack=True,
                     profile_memory=True) as p:
             trainer.train()
-        p.export_memory_timeline(f"../outputs/profile_memory/{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")    
+        p.export_memory_timeline(f"../outputs/profile/{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")    
     else:
         print("Starting training...")
         return trainer.train()
