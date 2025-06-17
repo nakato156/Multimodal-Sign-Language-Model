@@ -46,9 +46,9 @@ cmd = "python scripts/pre_calculate.py"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.profile_nvidia]
-cmd = "python scripts/train_profile.py --epochs 4 --batch_size 8 --profile_pytorch False"
+cmd = "python scripts/train_profile.py --epochs 4 --batch_size 4 --profile_pytorch False"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.profile_pytorch]
-cmd = "python scripts/train_profile.py --epochs 4 --batch_size 8 --profile_pytorch True"
+cmd = "python scripts/train_profile.py --epochs 4 --batch_size 4 --profile_pytorch True"
 env = { PYTHONPATH = "." }
