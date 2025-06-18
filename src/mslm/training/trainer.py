@@ -11,13 +11,12 @@ from src.mslm.checkpoint.manager import CheckpointManager
 from src.mslm.training import imitator_loss
 import nvtx
 
-torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
-
 class Trainer:
     def __init__(self, model, train_loader, val_loader, **kwargs):
         self.LOG = kwargs.get("log", False)
         
         self.device = kwargs.get("device", "cuda")
+        print(self.device)
         self.epochs = kwargs.get("epochs", 100)
         self.learning_rate = kwargs.get("learning_rate", 1e-4)
         self.log_interval = kwargs.get("log_interval", 5)
@@ -71,7 +70,7 @@ class Trainer:
         return train_loss, val_loss
 
     @nvtx.annotate("Training Section", color="green")
-    def train_dist(self, rank, channel, dist):
+    def train_dist(self, rank, channel, dist, stub):
         """Entrena el modelo Imitator.
         returns:
             train_loss: float, loss de entrenamiento
@@ -81,8 +80,6 @@ class Trainer:
         from src.mslm.distributed import data_pb2, data_pb2_grpc
         import io
         
-        stub = data_pb2_grpc.DataServiceServicer(channel)
-
         def save_model_dist():
                 buf = io.BytesIO()
                 torch.save(self.model, buf)
@@ -160,6 +157,7 @@ class Trainer:
                 loss_tensor = torch.tensor(loss.item(), device=self.device)
                 dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
                 loss = loss_tensor.item() / dist.get_world_size()
+                loss = torch.tensor(loss, device=self.device) 
 
                 if dist.get_rank() == 0:
                     print(f"World-avg loss: {loss:.4f}")

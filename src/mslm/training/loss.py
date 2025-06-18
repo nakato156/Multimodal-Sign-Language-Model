@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+@torch.compile()
 def imitator_loss(pred_embs: torch.Tensor, target_embs: torch.Tensor, embedding_mask: torch.Tensor = None) -> torch.Tensor:
     """
     Args:
@@ -13,9 +14,7 @@ def imitator_loss(pred_embs: torch.Tensor, target_embs: torch.Tensor, embedding_
         loss: Tensor of shape (batch_size, seq_len)
     """
     # align the lengths of the sequences
-    L_pred   = pred_embs.size(1)
-    L_targ   = target_embs.size(1)
-    L_common = min(L_pred, L_targ)
+    L_common = min(pred_embs.size(1), target_embs.size(1))
     pred_embs     = pred_embs   [:, :L_common]
     target_embs   = target_embs [:, :L_common]
     embedding_mask = embedding_mask[:, :L_common]
@@ -27,6 +26,6 @@ def imitator_loss(pred_embs: torch.Tensor, target_embs: torch.Tensor, embedding_
 
     valid = ~embedding_mask
 
-    loss = (mse_per_token * valid).sum() / valid.sum()
+    loss = torch.masked_select(mse_per_token, valid).sum() / valid.sum()
 
     return loss

@@ -61,7 +61,7 @@ def build_model(input_size, output_size, device, compile=True, **kwargs):
     """Construye, compila y retorna el modelo Imitator."""
     model = Imitator(input_size=input_size, output_size=output_size, **kwargs).to(device)
     if compile:
-        model = torch.compile(model, backend="inductor", mode="reduce-overhead")
+        model = torch.compile(model, backend="inductor", mode="reduce-overhead", dynamic=True)
     print(model)
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
     return model
@@ -78,15 +78,15 @@ def run_training(params, train_dataloader, val_dataloader, model, profile_pytorc
                     with_stack=True,
                     profile_memory=True) as p:
             trainer.train()
-        p.export_memory_timeline(f"../outputs/profile/{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")    
+        p.export_memory_timeline(f"./../outputs/profile/{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")    
     else:
         print("Starting training...")
         return trainer.train()
 
-def run_dt_training(params, train_dataloader, val_dataloader, model, rank, channel, dist):
+def run_dt_training(params, train_dataloader, val_dataloader, model, rank, channel, dist, stub):
     """Configura y ejecuta el entrenamiento."""
     trainer = Trainer(model, train_dataloader, val_dataloader, **params)
     trainer.ckpt_mgr.save_params(params)
 
     print("Starting training...")
-    return trainer.train_dist(rank, channel, dist)
+    return trainer.train_dist(rank, channel, dist, stub)

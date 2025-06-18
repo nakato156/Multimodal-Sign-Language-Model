@@ -4,6 +4,8 @@ from .components.positional_encoding import PositionalEncoding
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 
+torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
+
 class Imitator(nn.Module):
     def __init__(
         self,

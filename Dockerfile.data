@@ -1,6 +1,6 @@
 FROM python:3.11
 
-EXPOSE 50051 12355
+EXPOSE 50051 50051
 
 WORKDIR /output/Sign-AI
 COPY requirements.txt .
