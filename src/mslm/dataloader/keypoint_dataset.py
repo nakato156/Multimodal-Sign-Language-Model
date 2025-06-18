@@ -2,7 +2,7 @@ import h5py
 import torch
 
 class KeypointDataset():
-    def __init__(self, h5Path, transform = None, return_label=False, max_length=7000):
+    def __init__(self, h5Path, transform = None, return_label=False, max_length=5000):
         self.h5Path = h5Path
         self.transform = transform
 
