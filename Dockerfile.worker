@@ -1,0 +1,17 @@
+FROM pytorch/pytorch:2.7.1-cuda11.8-cudnn9-runtime
+
+ENV MASTER_ADDR=127.0.0.1
+ENV MASTER_PORT=50051
+ENV WORLD_SIZE=1
+ENV RANK=0
+
+WORKDIR /output/Sign-AI
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY scripts/ ./scripts/
+COPY src/ ./src/
+COPY pyproject.toml ./
+
+ENTRYPOINT ["poe", "worker"]

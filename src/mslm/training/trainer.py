@@ -109,7 +109,7 @@ class Trainer:
         val_loss = 0
 
         for epoch in tqdm(range(self.epochs), desc="Entrenando", colour="green"):
-            train_loss = self._train_epoch(epoch, optimizer, scheduler=None, True, dist)
+            train_loss = self._train_epoch(epoch, optimizer, scheduler=None, distributed=True, dist=dist)
             if rank == 0:
                 if epoch == 1: 
                     save_model_dist()
@@ -124,7 +124,7 @@ class Trainer:
                 break
         return train_loss, val_loss
     
-    def _train_epoch(self, epoch, optimizer, scheduler=None, distributed=True, dist=None):
+    def _train_epoch(self, epoch, optimizer, scheduler=None, distributed=False, dist=None):
         self.model.train()
         total_loss = 0
 
@@ -136,6 +136,9 @@ class Trainer:
                 embeddings = embeddings.to(self.device)
                 mask_frames = mask_frames.to(self.device)
                 mask_embeddings = mask_embeddings.to(self.device)
+
+                data = data.contiguous()
+                mask_frames = mask_frames.contiguous()
 
             with nvtx.annotate("Forward Pass", color="blue"):
                 #Change to bfloat16 if the GPU used is with Ampere Architecture or Higher
@@ -177,7 +180,7 @@ class Trainer:
         return final_loss
 
     @nvtx.annotate("Validation Section", color="blue")
-    def _validate(self, epoch, distributed=True, dist=None):
+    def _validate(self, epoch, distributed=False, dist=None):
         with nvtx.annotate("Prueba de Validacion", color="blue"):
             with torch.no_grad():
                 self.model.eval()
@@ -189,6 +192,9 @@ class Trainer:
                     mask_frames = mask_frames.to(self.device)
                     mask_embeddings = mask_embeddings.to(self.device)
                                         
+                    data = data.contiguous()
+                    mask_frames = mask_frames.contiguous()
+
                     output = self.model(data, mask_frames)
                     loss = self.criterion(output.to(dtype=torch.bfloat16), embeddings, mask_embeddings)
                     val_loss += loss.detach()

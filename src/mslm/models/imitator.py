@@ -113,10 +113,13 @@ class Imitator(nn.Module):
             src_key_padding_mask=frames_padding_mask
         )             # [B, pool_dim, hidden]
 
-        M = self.proj(x)                    # [B, pool_dim, output_size]
-
-        Q = self.token_queries.unsqueeze(0).expand(B, -1, -1)   # [B, n_tokens, output_size]
+        M = self.proj(x).contiguous()        # [B, pool_dim, output_size]
         
+        Q = self.token_queries.unsqueeze(0).expand(B, -1, -1).contiguous()   # [B, n_tokens, output_size]
+        
+        if frames_padding_mask is not None:
+            frames_padding_mask = frames_padding_mask.contiguous()
+
         attn_out, attn_w = self.cross_attn(
             query=Q,
             key=M,
