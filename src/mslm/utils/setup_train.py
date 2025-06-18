@@ -10,7 +10,6 @@ from src.mslm.utils.paths import path_vars
 
 #Profilers
 from torch.profiler import profile, ProfilerActivity
-import os
 import datetime
 
 def setup_paths():
