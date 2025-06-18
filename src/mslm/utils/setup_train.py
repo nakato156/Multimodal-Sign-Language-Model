@@ -83,3 +83,11 @@ def run_training(params, train_dataloader, val_dataloader, model, profile_pytorc
     else:
         print("Starting training...")
         return trainer.train()
+
+def run_dt_training(params, train_dataloader, val_dataloader, model, rank, channel, dist):
+    """Configura y ejecuta el entrenamiento."""
+    trainer = Trainer(model, train_dataloader, val_dataloader, **params)
+    trainer.ckpt_mgr.save_params(params)
+
+    print("Starting training...")
+    return trainer.train_dist(rank, channel, dist)

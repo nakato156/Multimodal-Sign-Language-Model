@@ -58,21 +58,42 @@ class Trainer:
 
         for epoch in tqdm(range(self.epochs), desc="Entrenando", colour="green"):
             train_loss = self._train_epoch(epoch, optimizer, scheduler=None)
+            if epoch == 1: 
+                self.ckpt_mgr.save_model(self.model, 1)
+            elif (epoch % self.checkpoint_interval == 0 and epoch != 0) or (epoch == self.epochs - 1):
+                self.ckpt_mgr.save_model(self.model, epoch)
+
             val_loss = self._validate(epoch)
             scheduler.step(val_loss)
             if self.early_stopping.stop:
+                self.ckpt_mgr.save_model(self.model, epoch)
                 break
         return train_loss, val_loss
 
     @nvtx.annotate("Training Section", color="green")
-    def train_dist(self):
+    def train_dist(self, rank, channel, dist):
         """Entrena el modelo Imitator.
         returns:
             train_loss: float, loss de entrenamiento
             val_loss: float, loss de validación
         """
-        from torch.nn.parallel import DistributedDataParallel as DDP
-        #self.model = DDP(self.model, device_ids=[device])
+
+        from src.mslm.distributed import data_pb2, data_pb2_grpc
+        import io
+        
+        stub = data_pb2_grpc.DataServiceServicer(channel)
+
+        def save_model_dist():
+                buf = io.BytesIO()
+                torch.save(self.model, buf)
+                req = data_pb2.SaveModelRequest(
+                    model_bytes=buf.getvalue(),
+                    model_name = f"{epoch}"
+                )
+                resp = stub.SaveModel(req)
+                print("=== SAVE MODEL ===")
+                print(" success:", resp.success)
+                print(" message:", resp.message)
 
         print("LR:", self.learning_rate)
         optimizer = AdamW(self.model.parameters(), lr=self.learning_rate, weight_decay=1e-3)
@@ -88,16 +109,22 @@ class Trainer:
         val_loss = 0
 
         for epoch in tqdm(range(self.epochs), desc="Entrenando", colour="green"):
-            train_loss = self._train_epoch(epoch, optimizer, scheduler=None)
-            val_loss = self._validate(epoch)
+            train_loss = self._train_epoch(epoch, optimizer, scheduler=None, True, dist)
+            if rank == 0:
+                if epoch == 1: 
+                    save_model_dist()
+                elif (epoch % self.checkpoint_interval == 0 and epoch != 0) or (epoch == self.epochs - 1):
+                    save_model_dist()
+
+            val_loss = self._validate(epoch, True, dist)
+
             scheduler.step(val_loss)
-            if self.early_stopping.stop:
+            if self.early_stopping.stop and rank == 0:
+                save_model_dist()
                 break
-
-            
         return train_loss, val_loss
-
-    def _train_epoch(self, epoch, optimizer, scheduler=None):
+    
+    def _train_epoch(self, epoch, optimizer, scheduler=None, distributed=True, dist=None):
         self.model.train()
         total_loss = 0
 
@@ -126,6 +153,14 @@ class Trainer:
 
             self.writer.add_scalar("Loss/train", loss, epoch)
 
+            if distributed:
+                loss_tensor = torch.tensor(loss.item(), device=self.device)
+                dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
+                loss = loss_tensor.item() / dist.get_world_size()
+
+                if dist.get_rank() == 0:
+                    print(f"World-avg loss: {loss:.4f}")
+
             with nvtx.annotate("Update", color="blue"):
                 self.scaler.scale(loss).backward()
                 
@@ -139,14 +174,10 @@ class Trainer:
         if epoch % self.log_interval == 0:
             tqdm.write(f"\nEpoch: {epoch}.\t Total loss: {final_loss/len(self.train_loader)}")
 
-        if epoch == 1:
-            self.ckpt_mgr.save_model(self.model, 1)
-        elif (epoch % self.checkpoint_interval == 0 and epoch != 0) or (epoch == self.epochs - 1):
-            self.ckpt_mgr.save_model(self.model, epoch)
         return final_loss
 
     @nvtx.annotate("Validation Section", color="blue")
-    def _validate(self, epoch):
+    def _validate(self, epoch, distributed=True, dist=None):
         with nvtx.annotate("Prueba de Validacion", color="blue"):
             with torch.no_grad():
                 self.model.eval()
@@ -168,9 +199,15 @@ class Trainer:
                 final_val_loss = val_loss.item() / len(self.val_loader)
                 if epoch % self.log_interval == 0:
                     tqdm.write(f"Validation Loss: {final_val_loss}" )
-                
+
+                if distributed:
+                    loss_tensor = torch.tensor(final_val_loss.item(), device=self.device)
+                    dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
+                    final_val_loss = loss_tensor.item() / dist.get_world_size()
+
+                    if dist.get_rank() == 0:
+                        print(f"World-avg loss: {loss:.4f}")
+
                 self.early_stopping(final_val_loss)
-                if self.early_stopping.stop:
-                    self.ckpt_mgr.save_model(self.model, epoch)
                 
                 return final_val_loss

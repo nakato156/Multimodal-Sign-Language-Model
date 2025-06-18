@@ -24,6 +24,16 @@ class DataServiceStub(object):
                 request_serializer=data__pb2.SaveModelRequest.SerializeToString,
                 response_deserializer=data__pb2.SaveModelResponse.FromString,
                 )
+        self.GetHyperparams = channel.unary_unary(
+                '/data.DataService/GetHyperparams',
+                request_serializer=data__pb2.Empty.SerializeToString,
+                response_deserializer=data__pb2.Hyperparams.FromString,
+                )
+        self.GetModelParameters = channel.unary_unary(
+                '/data.DataService/GetModelParameters',
+                request_serializer=data__pb2.Empty.SerializeToString,
+                response_deserializer=data__pb2.ModelParameters.FromString,
+                )
 
 
 class DataServiceServicer(object):
@@ -41,6 +51,18 @@ class DataServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetHyperparams(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetModelParameters(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DataServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -53,6 +75,16 @@ def add_DataServiceServicer_to_server(servicer, server):
                     servicer.SaveModel,
                     request_deserializer=data__pb2.SaveModelRequest.FromString,
                     response_serializer=data__pb2.SaveModelResponse.SerializeToString,
+            ),
+            'GetHyperparams': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetHyperparams,
+                    request_deserializer=data__pb2.Empty.FromString,
+                    response_serializer=data__pb2.Hyperparams.SerializeToString,
+            ),
+            'GetModelParameters': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetModelParameters,
+                    request_deserializer=data__pb2.Empty.FromString,
+                    response_serializer=data__pb2.ModelParameters.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -95,5 +127,39 @@ class DataService(object):
         return grpc.experimental.unary_unary(request, target, '/data.DataService/SaveModel',
             data__pb2.SaveModelRequest.SerializeToString,
             data__pb2.SaveModelResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetHyperparams(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/data.DataService/GetHyperparams',
+            data__pb2.Empty.SerializeToString,
+            data__pb2.Hyperparams.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetModelParameters(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/data.DataService/GetModelParameters',
+            data__pb2.Empty.SerializeToString,
+            data__pb2.ModelParameters.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
