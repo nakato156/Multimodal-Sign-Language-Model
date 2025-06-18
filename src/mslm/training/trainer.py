@@ -64,8 +64,38 @@ class Trainer:
                 break
         return train_loss, val_loss
 
-    def distributed_train(self):
-        raise NotImplementedError("Gorgo is thinking")
+    @nvtx.annotate("Training Section", color="green")
+    def train_dist(self):
+        """Entrena el modelo Imitator.
+        returns:
+            train_loss: float, loss de entrenamiento
+            val_loss: float, loss de validación
+        """
+        from torch.nn.parallel import DistributedDataParallel as DDP
+        #self.model = DDP(self.model, device_ids=[device])
+
+        print("LR:", self.learning_rate)
+        optimizer = AdamW(self.model.parameters(), lr=self.learning_rate, weight_decay=1e-3)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='min',
+            factor=0.5,
+            patience=2,
+            min_lr=1e-7
+        )
+
+        train_loss = 0
+        val_loss = 0
+
+        for epoch in tqdm(range(self.epochs), desc="Entrenando", colour="green"):
+            train_loss = self._train_epoch(epoch, optimizer, scheduler=None)
+            val_loss = self._validate(epoch)
+            scheduler.step(val_loss)
+            if self.early_stopping.stop:
+                break
+
+            
+        return train_loss, val_loss
 
     def _train_epoch(self, epoch, optimizer, scheduler=None):
         self.model.train()

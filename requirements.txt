@@ -1,8 +1,11 @@
 poethepoet
 torch
 numpy
-unsloth
 openmim
 tensorboard
 nvtx
 h5py
+protobuf
+grpcio
+grpcio-tools
+optuna
