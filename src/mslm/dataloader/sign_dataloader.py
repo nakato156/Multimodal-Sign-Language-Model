@@ -2,11 +2,10 @@ import torch
 from torch.utils.data import Dataset
 
 class SignDataLoader(Dataset):
-    def __init__(self, llama_tokenizer, keypointReader, device="cpu"):
+    def __init__(self, llama_tokenizer, keypointReader):
         self.llama_tokenizer = llama_tokenizer
         self.keypointReader = keypointReader
         # self.llama_embed_layer = llama_embed_layer
-        self.device = device
         self.max_len = 128
 
     def __getitem__(self, idx):

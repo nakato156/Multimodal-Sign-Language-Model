@@ -5,13 +5,17 @@ from torch.utils.data import DataLoader, random_split
 #Imported Classes
 from src.mslm.models import Imitator
 from src.mslm.training import Trainer
-from src.mslm.dataloader import KeypointDataset, collate_fn
+from src.mslm.dataloader import KeypointDataset, collate_fn, GRPCDataset
 from src.mslm.utils.paths import path_vars
 
 #Profilers
 from torch.profiler import profile, ProfilerActivity
-import os
 import datetime
+
+import torch._dynamo as dt
+dt.config.cache_size_limit = 8192
+dt.config.suppress_errors = True
+#torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
 
 def setup_paths():
     """Define y retorna las rutas necesarias para datos y modelos."""
@@ -20,7 +24,7 @@ def setup_paths():
     h5_file = path_vars.h5_file
     return data_path, model_path, h5_file
 
-def prepare_datasets(h5File, train_ratio, device):
+def prepare_datasets(h5File, train_ratio):
     """Carga el dataset base, lo envuelve y lo divide en entrenamiento y validación."""
     keypoint_reader = KeypointDataset(h5Path=h5File, return_label=False)
 
@@ -28,33 +32,46 @@ def prepare_datasets(h5File, train_ratio, device):
     print(f"Train size:\t{len(train_dataset)}\nValidation size:\t{len(validation_dataset)}")
     return train_dataset, validation_dataset
 
-def create_dataloaders(train_dataset, validation_dataset, batch_size, num_workers=4):
+def create_dataloaders(train_dataset, validation_dataset, batch_size, num_workers=4, use_grpc=False, grpc_address=None, rank = 4, world_size = 4):
     """Crea y retorna los DataLoaders para entrenamiento y validación."""
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=True,
-        persistent_workers=True,
-        collate_fn=collate_fn
-    )
-    val_dataloader = DataLoader(
-        validation_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True,
-        persistent_workers=True,
-        collate_fn=collate_fn
-    )
+    if use_grpc:
+        gtrain_dataset = GRPCDataset(grpc_address, rank, world_size, split="train")
+        gval_dataset = GRPCDataset(grpc_address, rank, world_size, split="val")
+        
+        train_dataloader = DataLoader(gtrain_dataset, batch_size=None)
+        val_dataloader = DataLoader(gval_dataset, batch_size=None)
+
+    else:
+        train_dataloader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=True,
+            persistent_workers=True,
+            collate_fn=collate_fn
+        )
+        val_dataloader = DataLoader(
+            validation_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=True,
+            persistent_workers=True,
+            collate_fn=collate_fn
+        )
     return train_dataloader, val_dataloader
 
 def build_model(input_size, output_size, device, compile=True, **kwargs):
     """Construye, compila y retorna el modelo Imitator."""
     model = Imitator(input_size=input_size, output_size=output_size, **kwargs).to(device)
     if compile:
-        model = torch.compile(model, backend="inductor", mode="reduce-overhead")
+        model = torch.compile(model, 
+                              backend="inductor",
+                              mode="reduce-overhead",
+                              #dynamic=True,
+                              #options={"max_autotune_gemm": False}
+        )
     print(model)
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
     return model
@@ -71,7 +88,15 @@ def run_training(params, train_dataloader, val_dataloader, model, profile_pytorc
                     with_stack=True,
                     profile_memory=True) as p:
             trainer.train()
-        p.export_memory_timeline(f"../outputs/profile/{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")    
+        p.export_memory_timeline(f"{path_vars.report_path}/{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")    
     else:
         print("Starting training...")
         return trainer.train()
+
+def run_dt_training(params, train_dataloader, val_dataloader, model, rank, channel, dist, stub):
+    """Configura y ejecuta el entrenamiento."""
+    trainer = Trainer(model, train_dataloader, val_dataloader, **params)
+    trainer.ckpt_mgr.save_params(params)
+
+    print("Starting training...")
+    return trainer.train_dist(rank, channel, dist, stub)

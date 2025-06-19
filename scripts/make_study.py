@@ -25,7 +25,7 @@ def run(
     train_config = ConfigLoader("config/training/train_config.toml").load_config()
     train_ratio = train_config.get("train_ratio", train_ratio)
     train_config.update({
-        "epochs": n_trials,
+        "epochs": train_config.get("epochs", 8),
         "batch_size": batch_size if batch_size else train_config.get("batch_size", 32),
         "checkpoint_interval": train_config.get("checkpoint_interval", 5),
         "log_interval": train_config.get("log_interval", 2),
@@ -35,7 +35,7 @@ def run(
     })
 
     # datasets
-    tr_ds, val_ds = prepare_datasets(h5_file, train_ratio, model_parameters["device"])
+    tr_ds, val_ds = prepare_datasets(h5_file, train_ratio)
     tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=4)
 
     # optuna
@@ -66,4 +66,5 @@ if __name__ == "__main__":
     parser.add_argument("--train_ratio", type=float, default=0.8, help="Ratio of training data.")
     args = parser.parse_args()
 
+    print(f"Running study with {args.n_trials} trials, batch size {args.batch_size}, train ratio {args.train_ratio}")
     run(args.n_trials, args.batch_size, args.train_ratio)

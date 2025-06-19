@@ -29,7 +29,7 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
     ff_dim        = trial.suggest_int("ff_dim", 1024, 3072, step=256)
     n_layers      = trial.suggest_categorical("n_layers",    [2, 4, 6, 8, 10, 12])
     learning_rate = trial.suggest_float("lr", 1e-8, 1e-1, log=True)
-
+    print(f"Hidden Size: {hidden_size}, Nhead: {nhead}, FF Dim: {ff_dim}, N Layers: {n_layers}, Learning Rate: {learning_rate}")
     train_config["learning_rate"] = learning_rate
 
     model = Imitator(

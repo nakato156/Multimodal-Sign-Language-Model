@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+@torch.jit.script
 def imitator_loss(pred_embs: torch.Tensor, target_embs: torch.Tensor, embedding_mask: torch.Tensor = None) -> torch.Tensor:
     """
     Args:
@@ -13,20 +14,19 @@ def imitator_loss(pred_embs: torch.Tensor, target_embs: torch.Tensor, embedding_
         loss: Tensor of shape (batch_size, seq_len)
     """
     # align the lengths of the sequences
-    L_pred   = pred_embs.size(1)
-    L_targ   = target_embs.size(1)
-    L_common = min(L_pred, L_targ)
+    L_common = min(pred_embs.size(1), target_embs.size(1))
     pred_embs     = pred_embs   [:, :L_common]
     target_embs   = target_embs [:, :L_common]
     embedding_mask = embedding_mask[:, :L_common]
 
     # Compute the L2 loss
-    mse_per_element = F.mse_loss(pred_embs, target_embs, reduction='none')
+    difference = pred_embs-target_embs
+    mse_token = difference.pow(2).sum(dim=-1) / difference.size(-1)
 
-    mse_per_token = mse_per_element.mean(dim=-1)
+    #mse_per_element = F.mse_loss(pred_embs, target_embs, reduction='none')
+    #mse_per_token = mse_per_element.mean(dim=-1)
 
-    valid = ~embedding_mask
-
-    loss = (mse_per_token * valid).sum() / valid.sum()
+    valid = (~embedding_mask).float()
+    loss = (mse_token * valid).sum() / valid.sum()
 
     return loss

@@ -1,0 +1,15 @@
+FROM python:3.11
+
+EXPOSE 50051 50051
+
+WORKDIR /output/Sign-AI
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY scripts/ ./scripts/
+COPY src/ ./src/
+COPY config/ ./config/
+COPY pyproject.toml .
+
+ENTRYPOINT ["poe", "grpc_server"]

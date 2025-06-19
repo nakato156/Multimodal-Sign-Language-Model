@@ -11,13 +11,12 @@ from src.mslm.checkpoint.manager import CheckpointManager
 from src.mslm.training import imitator_loss
 import nvtx
 
-torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
-
 class Trainer:
     def __init__(self, model, train_loader, val_loader, **kwargs):
         self.LOG = kwargs.get("log", False)
         
         self.device = kwargs.get("device", "cuda")
+        print(self.device)
         self.epochs = kwargs.get("epochs", 100)
         self.learning_rate = kwargs.get("learning_rate", 1e-4)
         self.log_interval = kwargs.get("log_interval", 5)
@@ -58,18 +57,75 @@ class Trainer:
 
         for epoch in tqdm(range(self.epochs), desc="Entrenando", colour="green"):
             train_loss = self._train_epoch(epoch, optimizer, scheduler=None)
+            if epoch == 1: 
+                self.ckpt_mgr.save_model(self.model, 1)
+            elif (epoch % self.checkpoint_interval == 0 and epoch != 0) or (epoch == self.epochs - 1):
+                self.ckpt_mgr.save_model(self.model, epoch)
+
             val_loss = self._validate(epoch)
             scheduler.step(val_loss)
             if self.early_stopping.stop:
+                self.ckpt_mgr.save_model(self.model, epoch)
                 break
         return train_loss, val_loss
 
-    def distributed_train(self):
-        raise NotImplementedError("Gorgo is thinking")
+    @nvtx.annotate("Training Section", color="green")
+    def train_dist(self, rank, channel, dist, stub):
+        """Entrena el modelo Imitator.
+        returns:
+            train_loss: float, loss de entrenamiento
+            val_loss: float, loss de validación
+        """
 
-    def _train_epoch(self, epoch, optimizer, scheduler=None):
+        from src.mslm.distributed import data_pb2, data_pb2_grpc
+        import io
+        
+        def save_model_dist():
+                buf = io.BytesIO()
+                torch.save(self.model, buf)
+                req = data_pb2.SaveModelRequest(
+                    model_bytes=buf.getvalue(),
+                    model_name = f"{epoch}"
+                )
+                resp = stub.SaveModel(req)
+                print("=== SAVE MODEL ===")
+                print(" success:", resp.success)
+                print(" message:", resp.message)
+
+        print("LR:", self.learning_rate)
+        optimizer = AdamW(self.model.parameters(), lr=self.learning_rate, weight_decay=1e-3)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='min',
+            factor=0.5,
+            patience=2,
+            min_lr=1e-7
+        )
+
+        train_loss = 0
+        val_loss = 0
+
+        for epoch in tqdm(range(self.epochs), desc="Entrenando", colour="green"):
+            train_loss = self._train_epoch(epoch, optimizer, scheduler=None, distributed=True, dist=dist)
+            if rank == 0:
+                if epoch == 1: 
+                    save_model_dist()
+                elif (epoch % self.checkpoint_interval == 0 and epoch != 0) or (epoch == self.epochs - 1):
+                    save_model_dist()
+
+            val_loss = self._validate(epoch, True, dist)
+
+            scheduler.step(val_loss)
+            if self.early_stopping.stop and rank == 0:
+                save_model_dist()
+                break
+        return train_loss, val_loss
+    
+    def _train_epoch(self, epoch, optimizer, scheduler=None, distributed=False, dist=None):
         self.model.train()
         total_loss = 0
+        #Change to bfloat16 if the GPU used is with Ampere Architecture or Higher
+        dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None
 
         for data, mask_frames, embeddings, mask_embeddings in self.train_loader:
             optimizer.zero_grad(set_to_none=True)
@@ -81,20 +137,27 @@ class Trainer:
                 mask_embeddings = mask_embeddings.to(self.device)
 
             with nvtx.annotate("Forward Pass", color="blue"):
-                #Change to bfloat16 if the GPU used is with Ampere Architecture or Higher
-                dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None
-
                 with autocast(device_type=self.device, dtype=dtype):
                     output = self.model(data, mask_frames)
-                    # print(mask_embeddings.shape, embeddings.shape, output.shape)
 
-                    loss = self.criterion(output, embeddings, mask_embeddings)
+                    with nvtx.annotate("Loss"): loss = self.criterion(output, embeddings, mask_embeddings)
+
+                del output, data, mask_frames, mask_embeddings
 
             with nvtx.annotate("Backward Pass", color="blue"):
                 total_loss += loss.detach()
                 final_loss = total_loss.item()
 
             self.writer.add_scalar("Loss/train", loss, epoch)
+
+            if distributed:
+                loss_tensor = torch.tensor(loss.item(), device=self.device)
+                dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
+                loss = loss_tensor.item() / dist.get_world_size()
+                loss = torch.tensor(loss, device=self.device) 
+
+                if dist.get_rank() == 0:
+                    print(f"World-avg loss: {loss:.4f}")
 
             with nvtx.annotate("Update", color="blue"):
                 self.scaler.scale(loss).backward()
@@ -104,43 +167,44 @@ class Trainer:
                 if scheduler:
                     scheduler.step()
 
-        torch.cuda.empty_cache()
-
         if epoch % self.log_interval == 0:
             tqdm.write(f"\nEpoch: {epoch}.\t Total loss: {final_loss/len(self.train_loader)}")
 
-        if epoch == 1:
-            self.ckpt_mgr.save_model(self.model, 1)
-        elif (epoch % self.checkpoint_interval == 0 and epoch != 0) or (epoch == self.epochs - 1):
-            self.ckpt_mgr.save_model(self.model, epoch)
+        torch.cuda.empty_cache()
         return final_loss
 
     @nvtx.annotate("Validation Section", color="blue")
-    def _validate(self, epoch):
+    def _validate(self, epoch, distributed=False, dist=None):
         with nvtx.annotate("Prueba de Validacion", color="blue"):
-            with torch.no_grad():
-                self.model.eval()
-                val_loss = 0
-                
+            self.model.eval()
+            val_loss = 0
+            with torch.inference_mode():
                 for data, mask_frames, embeddings, mask_embeddings in self.val_loader:
-                    data = data.to(self.device)
-                    embeddings = embeddings.to(self.device)
+                    data = data.to(self.device, non_blocking=True)
+                    embeddings = embeddings.to(self.device, non_blocking=True)
                     mask_frames = mask_frames.to(self.device)
                     mask_embeddings = mask_embeddings.to(self.device)
                                         
-                    output = self.model(data, mask_frames)
-                    loss = self.criterion(output.to(dtype=torch.bfloat16), embeddings, mask_embeddings)
+                    dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None
+                    with autocast(device_type=self.device, dtype=dtype):
+                        output = self.model(data, mask_frames)
+                        loss = self.criterion(output.to(dtype=torch.bfloat16), embeddings, mask_embeddings)
                     val_loss += loss.detach()
 
-                    # del output, data, embeddings, cos_sim
-                torch.cuda.empty_cache()
+                    del output, data, mask_frames, mask_embeddings
                     
                 final_val_loss = val_loss.item() / len(self.val_loader)
                 if epoch % self.log_interval == 0:
                     tqdm.write(f"Validation Loss: {final_val_loss}" )
-                
+
+                if distributed:
+                    loss_tensor = torch.tensor(final_val_loss.item(), device=self.device)
+                    dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
+                    final_val_loss = loss_tensor.item() / dist.get_world_size()
+
+                    if dist.get_rank() == 0:
+                        print(f"World-avg loss: {loss:.4f}")
+
                 self.early_stopping(final_val_loss)
-                if self.early_stopping.stop:
-                    self.ckpt_mgr.save_model(self.model, epoch)
-                
+                torch.cuda.empty_cache()
                 return final_val_loss
