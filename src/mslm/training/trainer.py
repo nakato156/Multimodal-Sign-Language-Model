@@ -127,25 +127,23 @@ class Trainer:
         #Change to bfloat16 if the GPU used is with Ampere Architecture or Higher
         dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None
 
-        for data, mask_frames, embeddings, mask_embeddings in self.train_loader:
+        for keypoints, mask_frames, embeddings, mask_embeddings in self.train_loader:
             optimizer.zero_grad(set_to_none=True)
 
             with nvtx.annotate("Data to CUDA", color="yellow"):
-                data = data.to(self.device)
-                embeddings = embeddings.to(self.device)
+                keypoints = keypoints.to(self.device, non_blocking=True)
+                embeddings = embeddings.to(self.device, non_blocking=True)
                 mask_frames = mask_frames.to(self.device)
                 mask_embeddings = mask_embeddings.to(self.device)
 
             with nvtx.annotate("Forward Pass", color="blue"):
                 with autocast(device_type=self.device, dtype=dtype):
-                    output = self.model(data, mask_frames)
-
+                    output = self.model(keypoints, mask_frames)
                     with nvtx.annotate("Loss"): loss = self.criterion(output, embeddings, mask_embeddings)
-
-                del output, data, mask_frames, mask_embeddings
+                del keypoints, embeddings, mask_frames, mask_embeddings, output
 
             with nvtx.annotate("Backward Pass", color="blue"):
-                total_loss += loss.detach()
+                total_loss += loss
                 final_loss = total_loss.item()
 
             self.writer.add_scalar("Loss/train", loss, epoch)
@@ -179,19 +177,19 @@ class Trainer:
             self.model.eval()
             val_loss = 0
             with torch.inference_mode():
-                for data, mask_frames, embeddings, mask_embeddings in self.val_loader:
-                    data = data.to(self.device, non_blocking=True)
+                for keypoints, mask_frames, embeddings, mask_embeddings in self.val_loader:
+                    keypoints = keypoints.to(self.device, non_blocking=True)
                     embeddings = embeddings.to(self.device, non_blocking=True)
                     mask_frames = mask_frames.to(self.device)
                     mask_embeddings = mask_embeddings.to(self.device)
                                         
                     dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None
                     with autocast(device_type=self.device, dtype=dtype):
-                        output = self.model(data, mask_frames)
+                        output = self.model(keypoints, mask_frames)
                         loss = self.criterion(output.to(dtype=torch.bfloat16), embeddings, mask_embeddings)
-                    val_loss += loss.detach()
+                    val_loss += loss
 
-                    del output, data, mask_frames, mask_embeddings
+                    del keypoints, embeddings, mask_frames, mask_embeddings, output
                     
                 final_val_loss = val_loss.item() / len(self.val_loader)
                 if epoch % self.log_interval == 0:
