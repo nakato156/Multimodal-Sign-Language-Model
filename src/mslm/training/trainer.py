@@ -124,6 +124,8 @@ class Trainer:
     def _train_epoch(self, epoch, optimizer, scheduler=None, distributed=False, dist=None):
         self.model.train()
         total_loss = 0
+        #Change to bfloat16 if the GPU used is with Ampere Architecture or Higher
+        dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None
 
         for data, mask_frames, embeddings, mask_embeddings in self.train_loader:
             optimizer.zero_grad(set_to_none=True)
@@ -134,18 +136,13 @@ class Trainer:
                 mask_frames = mask_frames.to(self.device)
                 mask_embeddings = mask_embeddings.to(self.device)
 
-                data = data.contiguous()
-                mask_frames = mask_frames.contiguous()
-
             with nvtx.annotate("Forward Pass", color="blue"):
-                #Change to bfloat16 if the GPU used is with Ampere Architecture or Higher
-                dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None
-
                 with autocast(device_type=self.device, dtype=dtype):
                     output = self.model(data, mask_frames)
-                    # print(mask_embeddings.shape, embeddings.shape, output.shape)
 
-                    loss = self.criterion(output, embeddings, mask_embeddings)
+                    with nvtx.annotate("Loss"): loss = self.criterion(output, embeddings, mask_embeddings)
+
+                del output, data, mask_frames, mask_embeddings
 
             with nvtx.annotate("Backward Pass", color="blue"):
                 total_loss += loss.detach()
@@ -170,35 +167,31 @@ class Trainer:
                 if scheduler:
                     scheduler.step()
 
-        torch.cuda.empty_cache()
-
         if epoch % self.log_interval == 0:
             tqdm.write(f"\nEpoch: {epoch}.\t Total loss: {final_loss/len(self.train_loader)}")
 
+        torch.cuda.empty_cache()
         return final_loss
 
     @nvtx.annotate("Validation Section", color="blue")
     def _validate(self, epoch, distributed=False, dist=None):
         with nvtx.annotate("Prueba de Validacion", color="blue"):
-            with torch.no_grad():
-                self.model.eval()
-                val_loss = 0
-                
+            self.model.eval()
+            val_loss = 0
+            with torch.inference_mode():
                 for data, mask_frames, embeddings, mask_embeddings in self.val_loader:
-                    data = data.to(self.device)
-                    embeddings = embeddings.to(self.device)
+                    data = data.to(self.device, non_blocking=True)
+                    embeddings = embeddings.to(self.device, non_blocking=True)
                     mask_frames = mask_frames.to(self.device)
                     mask_embeddings = mask_embeddings.to(self.device)
                                         
-                    data = data.contiguous()
-                    mask_frames = mask_frames.contiguous()
-
-                    output = self.model(data, mask_frames)
-                    loss = self.criterion(output.to(dtype=torch.bfloat16), embeddings, mask_embeddings)
+                    dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None
+                    with autocast(device_type=self.device, dtype=dtype):
+                        output = self.model(data, mask_frames)
+                        loss = self.criterion(output.to(dtype=torch.bfloat16), embeddings, mask_embeddings)
                     val_loss += loss.detach()
 
-                    # del output, data, embeddings, cos_sim
-                torch.cuda.empty_cache()
+                    del output, data, mask_frames, mask_embeddings
                     
                 final_val_loss = val_loss.item() / len(self.val_loader)
                 if epoch % self.log_interval == 0:
@@ -213,5 +206,5 @@ class Trainer:
                         print(f"World-avg loss: {loss:.4f}")
 
                 self.early_stopping(final_val_loss)
-                
+                torch.cuda.empty_cache()
                 return final_val_loss

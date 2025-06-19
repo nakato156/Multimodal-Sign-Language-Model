@@ -24,7 +24,8 @@ class KeypointDataset():
                 clip_ids  = list(f[dataset]["embeddings"].keys())
 
                 for clip in clip_ids:
-                    if f[dataset]["keypoints"][clip][:].shape[0] < self.max_length:
+                    shape = f[dataset]["keypoints"][clip].shape[0]
+                    if shape < self.max_length:
                         self.valid_index.append((dataset, clip))
 
     def __len__(self):
