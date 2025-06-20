@@ -15,6 +15,10 @@ import datetime
 import torch._dynamo as dt
 dt.config.cache_size_limit = 8192
 dt.config.suppress_errors = True
+
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32   = True
+
 #torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
 
 def setup_paths():
@@ -88,7 +92,10 @@ def run_training(params, train_dataloader, val_dataloader, model, profile_pytorc
                     with_stack=True,
                     profile_memory=True) as p:
             trainer.train()
-        p.export_memory_timeline(f"{path_vars.report_path}/{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")    
+        file_path = f"{path_vars.report_path}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        print(f"Saved at: {file_path}")    
+        p.export_chrome_trace(f"{file_path}.json.gz")
+        p.export_memory_timeline(f"{file_path}.html", device="cuda:0")
     else:
         print("Starting training...")
         return trainer.train()

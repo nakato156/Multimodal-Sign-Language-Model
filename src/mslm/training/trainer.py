@@ -43,7 +43,12 @@ class Trainer:
             val_loss: float, loss de validación
         """
         print("LR:", self.learning_rate)
-        optimizer = AdamW(self.model.parameters(), lr=self.learning_rate, weight_decay=1e-3)
+        optimizer = AdamW(
+            self.model.parameters(), 
+            lr=self.learning_rate, 
+            weight_decay=1e-3,
+            foreach=True
+        )
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
             mode='min',
@@ -121,6 +126,8 @@ class Trainer:
                 break
         return train_loss, val_loss
     
+    @torch.compile(mode="max-autotune")
+    @nvtx.annotate("Train Epoch Section", color="blue")
     def _train_epoch(self, epoch, optimizer, scheduler=None, distributed=False, dist=None):
         self.model.train()
         total_loss = 0
@@ -130,23 +137,16 @@ class Trainer:
         for keypoints, mask_frames, embeddings, mask_embeddings in self.train_loader:
             optimizer.zero_grad(set_to_none=True)
 
-            with nvtx.annotate("Data to CUDA", color="yellow"):
+            with nvtx.annotate("Train: Data to CUDA", color="yellow"):
                 keypoints = keypoints.to(self.device, non_blocking=True)
                 embeddings = embeddings.to(self.device, non_blocking=True)
-                mask_frames = mask_frames.to(self.device)
-                mask_embeddings = mask_embeddings.to(self.device)
+                mask_frames = mask_frames.to(self.device, non_blocking=True)
+                mask_embeddings = mask_embeddings.to(self.device, non_blocking=True)
 
             with nvtx.annotate("Forward Pass", color="blue"):
                 with autocast(device_type=self.device, dtype=dtype):
                     output = self.model(keypoints, mask_frames)
-                    with nvtx.annotate("Loss"): loss = self.criterion(output, embeddings, mask_embeddings)
-                del keypoints, embeddings, mask_frames, mask_embeddings, output
-
-            with nvtx.annotate("Backward Pass", color="blue"):
-                total_loss += loss
-                final_loss = total_loss.item()
-
-            self.writer.add_scalar("Loss/train", loss, epoch)
+                loss = self.criterion(output, embeddings, mask_embeddings)
 
             if distributed:
                 loss_tensor = torch.tensor(loss.item(), device=self.device)
@@ -157,14 +157,22 @@ class Trainer:
                 if dist.get_rank() == 0:
                     print(f"World-avg loss: {loss:.4f}")
 
-            with nvtx.annotate("Update", color="blue"):
+            with nvtx.annotate("Backward Pass", color="blue"):
                 self.scaler.scale(loss).backward()
-                
-                self.scaler.step(optimizer)
-                self.scaler.update()
-                if scheduler:
-                    scheduler.step()
+                total_loss += loss.detach()
 
+            with nvtx.annotate("Update", color="blue"):    
+                self.scaler.unscale_(optimizer)
+                optimizer.step()
+
+            self.scaler.update()
+            if scheduler:
+                scheduler.step()
+
+            del keypoints, embeddings, mask_frames, mask_embeddings, output
+        self.writer.add_scalar("Loss/train", loss, epoch)
+
+        final_loss = total_loss.item()
         if epoch % self.log_interval == 0:
             tqdm.write(f"\nEpoch: {epoch}.\t Total loss: {final_loss/len(self.train_loader)}")
 
@@ -175,23 +183,25 @@ class Trainer:
     def _validate(self, epoch, distributed=False, dist=None):
         with nvtx.annotate("Prueba de Validacion", color="blue"):
             self.model.eval()
+            dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None
             val_loss = 0
             with torch.inference_mode():
                 for keypoints, mask_frames, embeddings, mask_embeddings in self.val_loader:
-                    keypoints = keypoints.to(self.device, non_blocking=True)
-                    embeddings = embeddings.to(self.device, non_blocking=True)
-                    mask_frames = mask_frames.to(self.device)
-                    mask_embeddings = mask_embeddings.to(self.device)
-                                        
-                    dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None
-                    with autocast(device_type=self.device, dtype=dtype):
-                        output = self.model(keypoints, mask_frames)
-                        loss = self.criterion(output.to(dtype=torch.bfloat16), embeddings, mask_embeddings)
-                    val_loss += loss
+                    with nvtx.annotate("Val: Data to CUDA", color="blue"):
+                        keypoints = keypoints.to(self.device, non_blocking=True)
+                        embeddings = embeddings.to(self.device, non_blocking=True)
+                        mask_frames = mask_frames.to(self.device, non_blocking=True)
+                        mask_embeddings = mask_embeddings.to(self.device, non_blocking=True)
+                                            
+                    with nvtx.annotate("Val: Forward + Loss", color="blue"):
+                        with autocast(device_type=self.device, dtype=dtype):
+                            output = self.model(keypoints, mask_frames)
+                            loss = self.criterion(output.to(dtype=torch.bfloat16), embeddings, mask_embeddings)
+                    val_loss += loss.detach().item()
 
                     del keypoints, embeddings, mask_frames, mask_embeddings, output
                     
-                final_val_loss = val_loss.item() / len(self.val_loader)
+                final_val_loss = val_loss / len(self.val_loader)
                 if epoch % self.log_interval == 0:
                     tqdm.write(f"Validation Loss: {final_val_loss}" )
 
@@ -204,5 +214,4 @@ class Trainer:
                         print(f"World-avg loss: {loss:.4f}")
 
                 self.early_stopping(final_val_loss)
-                torch.cuda.empty_cache()
                 return final_val_loss
