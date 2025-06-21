@@ -15,6 +15,10 @@ import datetime
 import torch._dynamo as dt
 dt.config.cache_size_limit = 8192
 dt.config.suppress_errors = True
+
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32   = True
+
 #torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
 
 def setup_paths():
@@ -67,28 +71,31 @@ def build_model(input_size, output_size, device, compile=True, **kwargs):
     model = Imitator(input_size=input_size, output_size=output_size, **kwargs).to(device)
     if compile:
         model = torch.compile(model, 
-                              backend="inductor",
-                              mode="reduce-overhead",
-                              #dynamic=True,
-                              #options={"max_autotune_gemm": False}
+                              backend="aot_eager",
+                              dynamic=True
         )
     print(model)
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
     return model
 
-def run_training(params, train_dataloader, val_dataloader, model, profile_pytorch=False):
+def run_training(params, train_dataloader, val_dataloader, model, profile_model=0):
     """Configura y ejecuta el entrenamiento."""
     trainer = Trainer(model, train_dataloader, val_dataloader, **params)
     trainer.ckpt_mgr.save_params(params)
 
-    if profile_pytorch:
+    if profile_model == 1:
+        return trainer.train(prof=True)
+    elif profile_model == 2:
         print("Starting training with profiling...")
         with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
                     record_shapes=True,
                     with_stack=True,
                     profile_memory=True) as p:
             trainer.train()
-        p.export_memory_timeline(f"{path_vars.report_path}/{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")    
+        file_path = f"{path_vars.report_path}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        print(f"Saved at: {file_path}")    
+        p.export_chrome_trace(f"{file_path}.json.gz")
+        p.export_memory_timeline(f"{file_path}.html", device="cuda:0")
     else:
         print("Starting training...")
         return trainer.train()
