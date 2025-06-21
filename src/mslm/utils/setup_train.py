@@ -71,21 +71,21 @@ def build_model(input_size, output_size, device, compile=True, **kwargs):
     model = Imitator(input_size=input_size, output_size=output_size, **kwargs).to(device)
     if compile:
         model = torch.compile(model, 
-                              backend="inductor",
-                              mode="reduce-overhead",
-                              #dynamic=True,
-                              #options={"max_autotune_gemm": False}
+                              backend="aot_eager",
+                              dynamic=True
         )
     print(model)
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
     return model
 
-def run_training(params, train_dataloader, val_dataloader, model, profile_pytorch=False):
+def run_training(params, train_dataloader, val_dataloader, model, profile_model=0):
     """Configura y ejecuta el entrenamiento."""
     trainer = Trainer(model, train_dataloader, val_dataloader, **params)
     trainer.ckpt_mgr.save_params(params)
 
-    if profile_pytorch:
+    if profile_model == 1:
+        return trainer.train(prof=True)
+    elif profile_model == 2:
         print("Starting training with profiling...")
         with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
                     record_shapes=True,

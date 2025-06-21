@@ -44,15 +44,15 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
 
     trainer = Trainer(model, train_dataloader, val_dataloader, **train_config)
 
-    optimizer = AdamW(trainer.model.parameters(), lr=trainer.learning_rate, weight_decay=1e-3)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=2, min_lr=1e-7
+    trainer.optimizer = AdamW(trainer.model.parameters(), lr=trainer.learning_rate, weight_decay=1e-3)
+    trainer.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        trainer.optimizer, mode="min", factor=0.5, patience=2, min_lr=1e-7
     )
 
     for epoch in range(trainer.epochs):
-        _ = trainer._train_epoch(epoch, optimizer, scheduler=None)
-        val_loss   = trainer._validate(epoch)
-        scheduler.step(val_loss)
+        _ = trainer._train_epoch(epoch)
+        val_loss   = trainer._val(epoch)
+        trainer.scheduler.step(val_loss)
 
         # Reportar y podar
         trial.report(val_loss, step=epoch)

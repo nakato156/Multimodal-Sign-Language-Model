@@ -38,7 +38,11 @@ def run(
     tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=4)
 
     model = build_model(**model_parameters)
-    run_training(train_config, tr_dl, val_dl, model, profile_pytorch)
+
+    profile=1
+    if profile_pytorch:
+        profile = 2
+    run_training(train_config, tr_dl, val_dl, model, profile_model=profile)
 
 if __name__ == "__main__":
     import argparse

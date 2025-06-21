@@ -84,7 +84,6 @@ class Imitator(nn.Module):
             nn.Linear(output_size, output_size),
         )
 
-    @torch.compile(dynamic=True)
     def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor=None) -> torch.Tensor:
         """
         x: Tensor of frames
