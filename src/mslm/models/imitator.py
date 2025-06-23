@@ -32,8 +32,10 @@ class Imitator(nn.Module):
         self.linear_feat = nn.Sequential(
             nn.Linear(input_size, hidden_size),
             nn.GELU(),
+            nn.GELU(),
             nn.LayerNorm(hidden_size),
             nn.Linear(hidden_size, hidden_size // 2),
+            nn.GELU(),
             nn.GELU(),
             nn.LayerNorm(hidden_size // 2)
         )
@@ -80,7 +82,10 @@ class Imitator(nn.Module):
 
         self.proj_final = nn.Sequential(
             nn.Linear(output_size, output_size * 2),
+            nn.Linear(output_size, output_size * 2),
             nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(output_size * 2, output_size)
             nn.Dropout(0.1),
             nn.Linear(output_size * 2, output_size)
         )
@@ -105,24 +110,19 @@ class Imitator(nn.Module):
         x  = self.linear_seq(x)             # [B, hidden//2, pool_dim]
         x = x.transpose(1, 2)               # [B, pool_dim, hidden//2]
 
-        x = self.linear_hidden(x)           # [B, pool_dim, hidden]
+        x = checkpoint.checkpoint(
+            self.linear_hidden, x, use_reentrant=False
+        )           # [B, pool_dim, hidden]
 
         x = self.pe(x)
-        if self.training:
-            x = checkpoint.checkpoint(
-                transformer_block, 
-                x,
-                use_reentrant=True
-            )                               # [B, pool_dim, hidden]
-        else:
-            x = self.transformer(x, src_key_padding_mask=frames_padding_mask)
+        x = self.transformer(
+            x,
+            src_key_padding_mask=frames_padding_mask
+        )             # [B, pool_dim, hidden]
 
-        M = self.proj(x).contiguous()        # [B, pool_dim, output_size]
-        
-        Q = self.token_queries.unsqueeze(0).expand(B, -1, -1).contiguous()   # [B, n_tokens, output_size]
-        
-        if frames_padding_mask is not None:
-            frames_padding_mask = frames_padding_mask.contiguous()
+        M = self.proj(x)                    # [B, pool_dim, output_size]
+
+        Q = self.token_queries.unsqueeze(0).expand(B, -1, -1)   # [B, n_tokens, output_size]
 
         attn_out, attn_w = self.cross_attn(
             query=Q,
