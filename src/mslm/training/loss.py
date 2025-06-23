@@ -19,14 +19,10 @@ def imitator_loss(pred_embs: torch.Tensor, target_embs: torch.Tensor, embedding_
     target_embs   = target_embs [:, :L_common]
     embedding_mask = embedding_mask[:, :L_common]
 
-    # Compute the L2 loss
-    difference = pred_embs-target_embs
-    mse_token = difference.pow(2).sum(dim=-1) / difference.size(-1)
-
-    #mse_per_element = F.mse_loss(pred_embs, target_embs, reduction='none')
-    #mse_per_token = mse_per_element.mean(dim=-1)
+    # Compute the Cosine Similarity
+    cos_sim = F.cosine_similarity(pred_embs, target_embs, dim=2)
 
     valid = (~embedding_mask).float()
-    loss = (mse_token * valid).sum() / valid.sum()
+    loss = ((1.0 - cos_sim) * valid).sum() / valid.sum()
 
     return loss

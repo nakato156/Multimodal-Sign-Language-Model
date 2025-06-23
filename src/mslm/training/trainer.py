@@ -38,6 +38,9 @@ class Trainer:
         self.distributed = None
         self.dtype_ac = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None
 
+        self.optimizer = None
+        self.scheduler = None
+
         self._train_batch = torch.compile(
             self._train_batch,
             backend="aot_eager",
@@ -78,8 +81,6 @@ class Trainer:
 
         for epoch in tqdm(range(self.epochs), desc="Entrenando", colour="green"):
             train_loss = self._train_epoch(epoch)
-            if epoch % self.log_interval == 0:
-                tqdm.write(f"\nEpoch: {epoch}.\t Total loss: {train_loss.item()/len(self.train_loader)}")
             if epoch == 1:
                 self.ckpt_mgr.save_model(self.model, epoch)
             elif (epoch % self.checkpoint_interval == 0 and epoch != 0) or (epoch == self.epochs - 1):
@@ -172,6 +173,9 @@ class Trainer:
             else:
                 self.writer.add_scalar("Loss/train", loss, epoch)
                 total_loss += loss.detach()
+        if epoch % self.log_interval == 0:
+            tqdm.write(f"\nEpoch: {epoch}.\t Total loss: {total_loss.item()/len(self.train_loader)}")
+
         return total_loss
 
     @nvtx.annotate("Train: Train Batch", color="green")
@@ -183,10 +187,6 @@ class Trainer:
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)
             self.optimizer.step()
-
-            loss_detach = loss.detach()
-            self.scaler.update()
-            self.optimizer.zero_grad(set_to_none=True)
         else:        
             with nvtx.annotate("Forward Pass", color="blue"):
                 with autocast(device_type=self.device, dtype=self.dtype_ac):
@@ -198,8 +198,8 @@ class Trainer:
                 self.scaler.unscale_(self.optimizer)
                 self.optimizer.step()
 
-            loss_detach = loss.detach()
-            self.scaler.update()
+        loss_detach = loss.detach()
+        self.scaler.update()
         return loss_detach
 
     @nvtx.annotate("Validation Section", color="green")

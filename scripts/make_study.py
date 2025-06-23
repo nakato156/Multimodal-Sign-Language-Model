@@ -39,8 +39,8 @@ def run(
     tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=4)
 
     # optuna
-    storage = f"sqlite:///study19.db"
-    study = optuna.create_study(study_name="new_study",
+    storage = f"sqlite:///study_models.db"
+    study = optuna.create_study(study_name=f"model_{train_config['model_version']}",
         storage=storage,
         direction="minimize",
         load_if_exists=True,
