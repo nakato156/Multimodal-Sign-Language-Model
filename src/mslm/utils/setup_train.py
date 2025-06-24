@@ -1,4 +1,8 @@
 import torch
+import random
+
+torch.manual_seed(23)
+random.seed(23)
 
 from torch.utils.data import DataLoader, random_split
 
@@ -32,7 +36,7 @@ def prepare_datasets(h5File, train_ratio):
     """Carga el dataset base, lo envuelve y lo divide en entrenamiento y validación."""
     keypoint_reader = KeypointDataset(h5Path=h5File, return_label=False)
 
-    train_dataset, validation_dataset = random_split(keypoint_reader, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
+    train_dataset, validation_dataset = random_split(keypoint_reader, [train_ratio, 1 - train_ratio])
     print(f"Train size:\t{len(train_dataset)}\nValidation size:\t{len(validation_dataset)}")
     return train_dataset, validation_dataset
 
@@ -42,8 +46,17 @@ def create_dataloaders(train_dataset, validation_dataset, batch_size, num_worker
         gtrain_dataset = GRPCDataset(grpc_address, rank, world_size, split="train")
         gval_dataset = GRPCDataset(grpc_address, rank, world_size, split="val")
         
-        train_dataloader = DataLoader(gtrain_dataset, batch_size=None)
-        val_dataloader = DataLoader(gval_dataset, batch_size=None)
+        batch_per_worker = int(batch_size/world_size)
+
+        train_dataloader = DataLoader(gtrain_dataset,
+        batch_size=batch_per_worker,           
+        num_workers=4,           
+        pin_memory=True)
+
+        val_dataloader = DataLoader(gval_dataset,
+        batch_size=batch_per_worker,           
+        num_workers=4,           
+        pin_memory=True)
 
     else:
         train_dataloader = DataLoader(

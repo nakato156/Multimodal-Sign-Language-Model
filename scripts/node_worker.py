@@ -23,6 +23,8 @@ print(GRPC_IP, GRPC_PORT)
 print(RANK, WORLD_SIZE)
 
 def init_ddp():
+    torch.cuda.set_device(0)
+
     dist.init_process_group(
         backend="nccl",
         init_method=f"tcp://{DDP_IP}:{DDP_PORT}",
@@ -30,7 +32,17 @@ def init_ddp():
         rank=RANK
     )
 
-    torch.cuda.set_device(RANK % torch.cuda.device_count())
+    assert dist.is_initialized(), "DDP init failed!"
+
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    print(f"[Rank {rank}/{world_size}] GPU {torch.cuda.current_device()} allocated.")
+
+    # Barrier so everyone prints before proceeding
+    dist.barrier(device_ids=[torch.cuda.current_device()])
+    if rank == 0:
+        print(">>> All ranks have initialized. DDP is working!")
+
     return dist
 
 def run():
@@ -65,8 +77,7 @@ def run():
     print(hyperparameters)
     print(model_parameters)
 
-
-    tr_dl, val_dl = create_dataloaders(None, None, None, None, True, f"{GRPC_IP}:{GRPC_PORT}",rank=RANK, world_size=WORLD_SIZE)
+    tr_dl, val_dl = create_dataloaders(None, None, hp_kwargs["batch_size"], None, True, f"{GRPC_IP}:{GRPC_PORT}",rank=RANK, world_size=WORLD_SIZE)
 
     model = build_model(**mp_kwargs)
     ddp_model = DDP(model, device_ids=[device])    

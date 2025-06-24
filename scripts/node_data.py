@@ -10,8 +10,9 @@ import torch
 from concurrent import futures
 from torch.utils.data import DataLoader, DistributedSampler
 
-BATCH_SIZE = 8
 NUM_WORKERS = 4
+
+# ToDo: Error implementation for batch_size % world_size == 0 or error. 
 
 class DataServiceServicer(data_pb2_grpc.DataServiceServicer):
     def __init__(self, 
@@ -61,7 +62,21 @@ class DataServiceServicer(data_pb2_grpc.DataServiceServicer):
             )
             loader = DataLoader(
                 self.tr_ds,
-                batch_size=BATCH_SIZE,
+                batch_size=self.train_config["batch_size"],
+                sampler=sampler,
+                num_workers=NUM_WORKERS,
+                collate_fn=collate_fn
+            )
+        elif request.split =="val":
+            sampler = DistributedSampler(
+                self.val_ds, 
+                num_replicas=request.world_size,
+                rank=request.rank,
+                shuffle=True
+            )
+            loader = DataLoader(
+                self.val_ds,
+                batch_size=self.train_config["batch_size"],
                 sampler=sampler,
                 num_workers=NUM_WORKERS,
                 collate_fn=collate_fn
@@ -106,7 +121,8 @@ class DataServiceServicer(data_pb2_grpc.DataServiceServicer):
         return data_pb2.Hyperparams(
             learning_rate=self.train_config["learning_rate"],
             model_version=self.train_config["model_version"],
-            epochs=self.train_config["epochs"]
+            epochs=self.train_config["epochs"],
+            batch_size=self.train_config["batch_size"],
         )
 
     def GetModelParameters(self, request, context):
@@ -131,7 +147,7 @@ def serve(args, host="0.0.0.0", port=50051):
     data_pb2_grpc.add_DataServiceServicer_to_server(DataServiceServicer(args.epochs, args.batch_size, args.checkpoint_interval, args.log_interval), server)
     server.add_insecure_port(f"{host}:{port}")
     server.start()
-    print("The server has started")
+    print(f"The server has started at: {host}:{port}")
     server.wait_for_termination()
 
 if __name__ == "__main__":
@@ -142,6 +158,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training.")
     parser.add_argument("--checkpoint_interval", type=int, default=5, help="Interval for saving checkpoints.")
     parser.add_argument("--log_interval", type=int, default=2, help="Interval for logging training progress.")
+    parser.add_argument("--ip", type=str, default="0.0.0.0", help="Interval for logging training progress.")
     args = parser.parse_args()
     
-    serve(args)
+    serve(args, host=args.ip)
