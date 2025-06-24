@@ -31,9 +31,10 @@ class Imitator(nn.Module):
 
         self.linear_feat = nn.Sequential(
             nn.Linear(input_size, hidden_size),
-            nn.LayerNorm(hidden_size),
             nn.GELU(),
+            nn.LayerNorm(hidden_size),
             nn.Linear(hidden_size, hidden_size // 2),
+            nn.GELU(),
             nn.LayerNorm(hidden_size // 2)
         )
 
@@ -49,7 +50,6 @@ class Imitator(nn.Module):
     
         # Volvemos a hidden_size
         self.linear_hidden = nn.Linear(pool_dim, hidden_size)
-        self.norm4         = nn.LayerNorm(hidden_size)
 
         # Positional Encoding + Transformer
         self.pe          = PositionalEncoding(hidden_size)
@@ -79,9 +79,10 @@ class Imitator(nn.Module):
         self.norm_attn = nn.LayerNorm(output_size)
 
         self.proj_final = nn.Sequential(
-            nn.LayerNorm(output_size),
+            nn.Linear(output_size, output_size * 2),
             nn.GELU(),
-            nn.Linear(output_size, output_size),
+            nn.Dropout(0.1),
+            nn.Linear(output_size * 2, output_size)
         )
 
     @torch.compile(dynamic=True)
@@ -106,9 +107,6 @@ class Imitator(nn.Module):
 
         x = self.linear_hidden(x)           # [B, pool_dim, hidden]
 
-        x = self.norm4(x)                   # [B, pool_dim, hidden]
-        x = F.relu(x)                       # [B, pool_dim, hidden]
-
         x = self.pe(x)
         if self.training:
             x = checkpoint.checkpoint(
@@ -132,7 +130,7 @@ class Imitator(nn.Module):
             value=M,
             key_padding_mask=frames_padding_mask
         )  # [B, n_tokens, output_size]
-        attn_out = self.norm_attn(attn_out)
+        x = self.norm_attn(Q + attn_out)
         # print(f"Attention output shape: {attn_out.shape}, Q shape: {Q.shape}, M shape: {M.shape}")
-        x = self.proj_final(attn_out)        # [B, n_tokens, output_size]
+        x = x + self.proj_final(attn_out)        # [B, n_tokens, output_size]
         return x
