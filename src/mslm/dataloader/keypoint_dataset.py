@@ -1,5 +1,7 @@
 import h5py
 import torch
+from torch.utils.data import random_split
+
 
 class KeypointDataset():
     def __init__(self, h5Path, transform = None, return_label=False, max_length=5000):
@@ -31,7 +33,15 @@ class KeypointDataset():
                     if shape < self.max_length:
                         self.valid_index.append((dataset, clip))
                         self.video_lengths.append(shape)
+
+    def split_dataset(self, train_ratio):
+        train_dataset, validation_dataset = random_split(self, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
     
+        train_length = [self.video_lengths[i] for i in train_dataset.indices]
+        val_length = [self.video_lengths[i] for i in validation_dataset.indices] 
+
+        return train_dataset, validation_dataset, train_length, val_length
+
     def get_video_lengths(self):
         return self.video_lengths
 
