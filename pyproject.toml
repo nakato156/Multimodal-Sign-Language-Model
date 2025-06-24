@@ -30,7 +30,7 @@ dev = [
 [tool.poe.tasks]
 # Definimos cada tarea con su propio bloque para pasar PYTHONPATH
 [tool.poe.tasks.train]
-cmd = "python scripts/train.py --epochs 100 --batch_size 32"
+cmd = "python scripts/train.py --epochs 100 --batch_size 8"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.finetune]
@@ -38,7 +38,7 @@ cmd = "python scripts/finetuning.py --epochs 10"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.study]
-cmd = "python scripts/make_study.py --n_trials 30"
+cmd = "python scripts/make_study.py --n_trials 30 --batch_size 4"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.embed]
@@ -46,9 +46,17 @@ cmd = "python scripts/pre_calculate.py"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.profile_nvidia]
-cmd = "python scripts/train_profile.py --epochs 4 --batch_size 8 --profile_pytorch False"
+cmd = "python scripts/train_profile.py --epochs 2 --batch_size 8"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.profile_pytorch]
-cmd = "python scripts/train_profile.py --epochs 4 --batch_size 8 --profile_pytorch True"
+cmd = "python scripts/train_profile.py --epochs 4 --batch_size 4 --profile_pytorch"
+env = { PYTHONPATH = "." }
+
+[tool.poe.tasks.grpc_server]
+cmd = "python scripts/node_data.py --epochs 100 --batch_size 32"
+env = { PYTHONPATH = "." }
+
+[tool.poe.tasks.worker]
+cmd = "python scripts/node_worker.py"
 env = { PYTHONPATH = "." }

@@ -31,9 +31,10 @@ class Imitator(nn.Module):
 
         self.linear_feat = nn.Sequential(
             nn.Linear(input_size, hidden_size),
-            nn.LayerNorm(hidden_size),
             nn.GELU(),
+            nn.LayerNorm(hidden_size),
             nn.Linear(hidden_size, hidden_size // 2),
+            nn.GELU(),
             nn.LayerNorm(hidden_size // 2)
         )
 
@@ -49,7 +50,6 @@ class Imitator(nn.Module):
     
         # Volvemos a hidden_size
         self.linear_hidden = nn.Linear(pool_dim, hidden_size)
-        self.norm4         = nn.LayerNorm(hidden_size)
 
         # Positional Encoding + Transformer
         self.pe          = PositionalEncoding(hidden_size)
@@ -79,9 +79,10 @@ class Imitator(nn.Module):
         self.norm_attn = nn.LayerNorm(output_size)
 
         self.proj_final = nn.Sequential(
-            nn.LayerNorm(output_size),
+            nn.Linear(output_size, output_size * 2),
             nn.GELU(),
-            nn.Linear(output_size, output_size),
+            nn.Dropout(0.1),
+            nn.Linear(output_size * 2, output_size)
         )
 
     @torch.compile(dynamic=True)
@@ -90,6 +91,10 @@ class Imitator(nn.Module):
         x: Tensor of frames
         returns: Tensor of embeddings for each token (128 tokens of frames)
         """
+
+        def transformer_block(x):
+            return self.transformer(x,src_key_padding_mask=frames_padding_mask)
+
         B, T, D, K = x.shape                # x -> [batch_size, T, input_size]
         x = x.view(B, T,  D * K)            # [B, T, input_size]
         
@@ -100,30 +105,32 @@ class Imitator(nn.Module):
         x  = self.linear_seq(x)             # [B, hidden//2, pool_dim]
         x = x.transpose(1, 2)               # [B, pool_dim, hidden//2]
 
-        x = checkpoint.checkpoint(
-            self.linear_hidden, x, use_reentrant=False
-        )           # [B, pool_dim, hidden]
-
-        x = self.norm4(x)                   # [B, pool_dim, hidden]
-        x = F.relu(x)                       # [B, pool_dim, hidden]
+        x = self.linear_hidden(x)           # [B, pool_dim, hidden]
 
         x = self.pe(x)
-        x = self.transformer(
-            x,
-            src_key_padding_mask=frames_padding_mask
-        )             # [B, pool_dim, hidden]
+        if self.training:
+            x = checkpoint.checkpoint(
+                transformer_block, 
+                x,
+                use_reentrant=True
+            )                               # [B, pool_dim, hidden]
+        else:
+            x = self.transformer(x, src_key_padding_mask=frames_padding_mask)
 
-        M = self.proj(x)                    # [B, pool_dim, output_size]
-
-        Q = self.token_queries.unsqueeze(0).expand(B, -1, -1)   # [B, n_tokens, output_size]
+        M = self.proj(x).contiguous()        # [B, pool_dim, output_size]
         
+        Q = self.token_queries.unsqueeze(0).expand(B, -1, -1).contiguous()   # [B, n_tokens, output_size]
+        
+        if frames_padding_mask is not None:
+            frames_padding_mask = frames_padding_mask.contiguous()
+
         attn_out, attn_w = self.cross_attn(
             query=Q,
             key=M,
             value=M,
             key_padding_mask=frames_padding_mask
         )  # [B, n_tokens, output_size]
-        attn_out = self.norm_attn(attn_out)
+        x = self.norm_attn(Q + attn_out)
         # print(f"Attention output shape: {attn_out.shape}, Q shape: {Q.shape}, M shape: {M.shape}")
-        x = self.proj_final(attn_out)        # [B, n_tokens, output_size]
+        x = x + self.proj_final(attn_out)        # [B, n_tokens, output_size]
         return x

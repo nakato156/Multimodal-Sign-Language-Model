@@ -34,11 +34,15 @@ def run(
         "device": device if model_parameters.get("device") == "auto" else model_parameters.get("device", device),
     })
     
-    tr_ds, val_ds = prepare_datasets(h5_file, train_ratio, device)
+    tr_ds, val_ds = prepare_datasets(h5_file, train_ratio)
     tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=4)
 
     model = build_model(**model_parameters)
-    run_training(train_config, tr_dl, val_dl, model, profile_pytorch=profile_pytorch)
+
+    profile=1
+    if profile_pytorch:
+        profile = 2
+    run_training(train_config, tr_dl, val_dl, model, profile_model=profile)
 
 if __name__ == "__main__":
     import argparse
@@ -48,7 +52,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training.")
     parser.add_argument("--checkpoint_interval", type=int, default=5, help="Interval for saving checkpoints.")
     parser.add_argument("--log_interval", type=int, default=2, help="Interval for logging training progress.")
-    parser.add_argument("--profile_pytorch", type=bool, default=False, help="Interval for pytorch profiling.")
+    parser.add_argument("--profile_pytorch", action="store_true", default=False, help="Interval for pytorch profiling.")
     args = parser.parse_args()
 
-    run(args.epochs, args.batch_size, args.checkpoint_interval, args.log_interval, args.profile_pytorch)
+    run(args.epochs, args.batch_size, args.checkpoint_interval, args.log_interval, profile_pytorch=args.profile_pytorch)

@@ -3,6 +3,7 @@ from ..models import Imitator
 from optuna.exceptions import TrialPruned
 import torch
 from torch.optim import AdamW
+from tqdm import trange
 
 def lr_objetive(trial, train_dataloader, val_dataloader, **params):
     learning_rate = trial.suggest_float("lr", 1e-5, 1e-1, log=True)
@@ -24,11 +25,11 @@ def lr_objetive(trial, train_dataloader, val_dataloader, **params):
     return val_loss
 
 def complete_objective(trial, train_dataloader, val_dataloader, model_params, train_config):
-    hidden_size   = trial.suggest_categorical("hidden_size", [512, 1024])
+    hidden_size   = trial.suggest_categorical("hidden_size", [512, 1024, 2048])
     nhead         = trial.suggest_categorical("nhead",       [4, 8, 16, 32, 64])
     ff_dim        = trial.suggest_int("ff_dim", 1024, 3072, step=256)
     n_layers      = trial.suggest_categorical("n_layers",    [2, 4, 6, 8, 10, 12])
-    learning_rate = trial.suggest_float("lr", 1e-8, 1e-1, log=True)
+    learning_rate = trial.suggest_float("lr", 5e-5, 1e-3, log=True)
     print(f"Hidden Size: {hidden_size}, Nhead: {nhead}, FF Dim: {ff_dim}, N Layers: {n_layers}, Learning Rate: {learning_rate}")
     train_config["learning_rate"] = learning_rate
 
@@ -40,19 +41,32 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
         ff_dim=ff_dim,
         n_layers=n_layers,
         max_seq_length=301
+    )
+    model = torch.compile(model, 
+                            backend="aot_eager",
+                            dynamic=True
     ).to(model_params["device"])
 
     trainer = Trainer(model, train_dataloader, val_dataloader, **train_config)
 
-    optimizer = AdamW(trainer.model.parameters(), lr=trainer.learning_rate, weight_decay=1e-3)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=2, min_lr=1e-7
+    trainer.optimizer = AdamW(
+        trainer.model.parameters(), 
+        lr=trainer.learning_rate, 
+        weight_decay=1e-3,
+        foreach=True
+    )
+    trainer.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        trainer.optimizer, 
+        mode="min", 
+        factor=0.5, 
+        patience=2, 
+        min_lr=1e-7
     )
 
-    for epoch in range(trainer.epochs):
-        _ = trainer._train_epoch(epoch, optimizer, scheduler=None)
-        val_loss   = trainer._validate(epoch)
-        scheduler.step(val_loss)
+    for epoch in trange(trainer.epochs, desc="Epochs"):
+        _ = trainer._train_epoch(epoch)
+        val_loss   = trainer._val(epoch)
+        trainer.scheduler.step(val_loss)
 
         # Reportar y podar
         trial.report(val_loss, step=epoch)
