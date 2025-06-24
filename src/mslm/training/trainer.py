@@ -2,6 +2,11 @@ import torch._inductor.config
 from tqdm import tqdm
 
 import torch
+import random
+
+torch.manual_seed(23)
+random.seed(23)
+
 from torch import autocast, GradScaler
 from torch.optim import AdamW
 from torch.utils.tensorboard import SummaryWriter

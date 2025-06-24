@@ -1,4 +1,9 @@
 import torch
+import random
+
+torch.manual_seed(23)
+random.seed(23)
+
 from src.mslm.utils.setup_train import setup_paths
 from src.mslm.utils import create_dataloaders, build_model, run_training, prepare_datasets, ConfigLoader
 
