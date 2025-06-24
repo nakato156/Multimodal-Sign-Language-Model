@@ -17,6 +17,27 @@
                 "CONDA_PREFIX": "/home/giorgio6846/Code/Sign-AI/Sign-Multimodal-Language-Model/.conda",
                 "PATH": "/home/giorgio6846/Code/Sign-AI/Sign-Multimodal-Language-Model/.conda/bin:${env:PATH}"
             }
+        },
+        {
+            "name": "Debug Worker Rank0 (Conda)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/giorgio6846/Code/Sign-AI/Sign-Multimodal-Language-Model/.conda/bin/poe",
+            "args": ["worker"],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "CONDA_DEFAULT_ENV": "Sign-Multimodal-Language-Model",
+                "CONDA_PREFIX": "/home/giorgio6846/Code/Sign-AI/Sign-Multimodal-Language-Model/.conda",
+                "PATH": "/home/giorgio6846/Code/Sign-AI/Sign-Multimodal-Language-Model/.conda/bin:${env:PATH}",
+                "DDP_ADDR": "172.25.197.59",
+                "DDP_PORT": "50050",
+                "GRPC_ADDR": "172.25.197.59",
+                "GRPC_PORT": "50051",
+                "RANK": "0",
+                "WORLD_SIZE": "2"
+            
+            }
         }
     ]
 }

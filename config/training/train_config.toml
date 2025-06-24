@@ -1,9 +1,9 @@
-learning_rate = 0.0000007
-model_version = 66
+learning_rate = 0.0003
+model_version = 71
 checkpoint = 7
-epochs = 12
+epochs = 15
 log_interval = 1
 checkpoint_interval = 5
-batch_size = 4
+batch_size = 2
 train_ratio = 0.8
 device = "auto"
