@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, random_split
 #Imported Classes
 from src.mslm.models import Imitator
 from src.mslm.training import Trainer
-from src.mslm.dataloader import KeypointDataset, collate_fn, GRPCDataset
+from src.mslm.dataloader import KeypointDataset, collate_fn, GRPCDataset, BatchSampler
 from src.mslm.utils.paths import path_vars
 
 #Profilers
@@ -17,11 +17,12 @@ from torch.profiler import profile, ProfilerActivity
 import datetime
 
 import torch._dynamo as dt
-dt.config.cache_size_limit = 8192
-dt.config.suppress_errors = True
+#dt.config.cache_size_limit = 8192
+#dt.config.suppress_errors = True
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32   = True
+
 
 #torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
 
@@ -59,23 +60,24 @@ def create_dataloaders(train_dataset, validation_dataset, batch_size, num_worker
         pin_memory=True)
 
     else:
+        train_sampler = BatchSampler(train_dataset, batch_size)
+        val_sampler = BatchSampler(validation_dataset, batch_size)
+
         train_dataloader = DataLoader(
             train_dataset,
-            batch_size=batch_size,
-            shuffle=True,
             num_workers=num_workers,
             pin_memory=True,
             persistent_workers=True,
-            collate_fn=collate_fn
+            collate_fn=collate_fn,
+            batch_sampler=train_sampler
         )
         val_dataloader = DataLoader(
             validation_dataset,
-            batch_size=batch_size,
-            shuffle=False,
             num_workers=num_workers,
             pin_memory=True,
             persistent_workers=True,
-            collate_fn=collate_fn
+            collate_fn=collate_fn,
+            batch_sampler=val_sampler
         )
     return train_dataloader, val_dataloader
 
@@ -84,8 +86,7 @@ def build_model(input_size, output_size, device, compile=True, **kwargs):
     model = Imitator(input_size=input_size, output_size=output_size, **kwargs).to(device)
     if compile:
         model = torch.compile(model, 
-                              backend="aot_eager",
-                              dynamic=True
+                              options={"triton.cudagraphs": True}
         )
     print(model)
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
