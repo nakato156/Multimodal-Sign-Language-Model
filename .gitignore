@@ -17,6 +17,7 @@ outputs/
 nk_*
 *.pickle
 **/test.ipynb
+dt*
 
 # macOS system files
 *.DS_Store
