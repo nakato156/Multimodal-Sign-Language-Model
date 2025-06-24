@@ -9,6 +9,7 @@ class KeypointDataset():
         self.return_label = return_label
 
         self.max_length = max_length
+        self.video_lengths = []
 
         self.processData()
 
@@ -22,13 +23,17 @@ class KeypointDataset():
                 if dataset != "dataset2":
                     continue
 
-                group  = list(f[dataset].keys())
+                #group  = list(f[dataset].keys())
                 clip_ids  = list(f[dataset]["embeddings"].keys())
 
                 for clip in clip_ids:
                     shape = f[dataset]["keypoints"][clip].shape[0]
                     if shape < self.max_length:
                         self.valid_index.append((dataset, clip))
+                        self.video_lengths.append(shape)
+    
+    def get_video_lengths(self):
+        return self.video_lengths
 
     def __len__(self):
         return len(self.valid_index)
