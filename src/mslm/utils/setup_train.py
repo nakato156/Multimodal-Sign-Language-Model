@@ -36,12 +36,12 @@ def setup_paths():
 def prepare_datasets(h5File, train_ratio):
     """Carga el dataset base, lo envuelve y lo divide en entrenamiento y validación."""
     keypoint_reader = KeypointDataset(h5Path=h5File, return_label=False)
+    train_dataset, validation_dataset, train_length, val_length = keypoint_reader.split_dataset(train_ratio)
 
-    train_dataset, validation_dataset = random_split(keypoint_reader, [train_ratio, 1 - train_ratio])
     print(f"Train size:\t{len(train_dataset)}\nValidation size:\t{len(validation_dataset)}")
-    return train_dataset, validation_dataset
+    return train_dataset, validation_dataset, train_length, val_length
 
-def create_dataloaders(train_dataset, validation_dataset, batch_size, num_workers=4, use_grpc=False, grpc_address=None, rank = 4, world_size = 4):
+def create_dataloaders(train_dataset, validation_dataset, batch_size, num_workers=4, use_grpc=False, grpc_address=None, rank = 4, world_size = 4, train_length = None, val_length = None):
     """Crea y retorna los DataLoaders para entrenamiento y validación."""
     if use_grpc:
         gtrain_dataset = GRPCDataset(grpc_address, rank, world_size, split="train")
@@ -60,8 +60,8 @@ def create_dataloaders(train_dataset, validation_dataset, batch_size, num_worker
         pin_memory=True)
 
     else:
-        train_sampler = BatchSampler(train_dataset, batch_size)
-        val_sampler = BatchSampler(validation_dataset, batch_size)
+        train_sampler = BatchSampler(train_length, batch_size)
+        val_sampler = BatchSampler(val_length, batch_size)
 
         train_dataloader = DataLoader(
             train_dataset,
