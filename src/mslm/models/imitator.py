@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from .components.positional_encoding import PositionalEncoding
-import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 
 class Imitator(nn.Module):
@@ -39,14 +38,13 @@ class Imitator(nn.Module):
         )
 
         pool_dim = 256
-        self.linear_seq = nn.Sequential(
-            nn.Conv1d(hidden_size//2, pool_dim, kernel_size=3, padding=1),
-            nn.BatchNorm1d(pool_dim),
-            nn.GELU(),
-            nn.Conv1d(pool_dim, pool_dim, kernel_size=1),
-            nn.BatchNorm1d(pool_dim),
-            nn.GELU(),
-        )
+        # linear sequencer
+        self.conv1  = nn.Conv1d(hidden_size//2, pool_dim, kernel_size=3, padding=1)
+        self.ln1    = nn.LayerNorm(pool_dim)
+        self.act1   = nn.GELU()
+        self.conv2  = nn.Conv1d(pool_dim, pool_dim, kernel_size=1)
+        self.ln2    = nn.LayerNorm(pool_dim)
+        self.act2   = nn.GELU()
     
         # Volvemos a hidden_size
         self.linear_hidden = nn.Linear(pool_dim, hidden_size)
@@ -102,8 +100,16 @@ class Imitator(nn.Module):
 
         x = x.transpose(1, 2)               # [B, hidden//2, T]
         # se mantiene T' = T o reducirdo a pool_dim
-        x  = self.linear_seq(x)             # [B, hidden//2, pool_dim]
+        x  = self.conv1(x)                  # [B, hidden//2, pool_dim]
         x = x.transpose(1, 2)               # [B, pool_dim, hidden//2]
+        x = self.ln1(x)                     # [B, pool_dim, hidden//2]
+        x = self.act1(x)                    # [B, pool_dim, hidden//2]
+        x = x.transpose(1, 2)               # [B, hidden//2, pool_dim]
+
+        x = self.conv2(x)                  # [B, pool_dim, pool_dim]
+        x = x.transpose(1, 2)               # [B, pool_dim, pool_dim]
+        x = self.ln2(x)                     # [B, pool_dim, pool_dim]
+        x = self.act2(x)                    # [B, pool_dim, pool_dim]
 
         x = self.linear_hidden(x)           # [B, pool_dim, hidden]
 
