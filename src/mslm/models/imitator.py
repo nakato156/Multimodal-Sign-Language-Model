@@ -107,8 +107,6 @@ class Imitator(nn.Module):
 
         x = self.conv2(x)                  # [B, hidden//2, pool_dim]
         x = x.transpose(1, 2)               # [B, pool_dim, hidden//2]
-        x = self.ln2(x)                     # [B, pool_dim, hidden//2]
-        x = self.act2(x)                    # [B, pool_dim, hidden//2]
 
         x = self.linear_hidden(x)           # [B, pool_dim, hidden]
 
