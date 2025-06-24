@@ -91,7 +91,8 @@ class Trainer:
                 self.ckpt_mgr.save_model(self.model, epoch)
 
             val_loss = self._val(epoch)
-            self.scheduler.step()
+            if self.scheduler is not None:
+                self.scheduler.step()
             if self.early_stopping.stop:
                 self.ckpt_mgr.save_model(self.model, epoch)
 
