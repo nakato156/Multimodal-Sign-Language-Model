@@ -2,8 +2,9 @@ import h5py
 import torch
 
 class KeypointDataset():
-    def __init__(self, h5Path, transform = None, return_label=False, max_length=5000):
+    def __init__(self, h5Path, n_keypoints = 230, transform = None, return_label=False, max_length=5000):
         self.h5Path = h5Path
+        self.n_keypoints = n_keypoints
         self.transform = transform
 
         self.return_label = return_label
@@ -32,6 +33,29 @@ class KeypointDataset():
 
     def __len__(self):
         return len(self.valid_index)
+    
+    def filter_unstable_keypoints_to_num(keypoints, keep_n=230):
+        """
+        Conserva los 'keep_n' keypoints más estables (con menor varianza temporal).
+        """
+        T, N, _ = keypoints.shape
+
+        # Calcular varianza temporal por keypoint
+        var = keypoints.var(dim=0).mean(dim=1)  # (N,)
+
+        # Obtener los índices de los keypoints más estables
+        _, indices = torch.topk(-var, k=keep_n)  # usamos -var para orden ascendente
+        stable_mask = torch.zeros(N, dtype=torch.bool)
+        stable_mask[indices] = True
+
+        # Aplicar la máscara
+        filtered = keypoints.clone()
+        for i in range(N):
+            if not stable_mask[i]:
+                filtered[:, i] = 0
+
+        return filtered, stable_mask
+
 
     def __getitem__(self, idx):
         mapped_idx = self.valid_index[idx]
@@ -46,6 +70,7 @@ class KeypointDataset():
         #Keypoints a Tensor
         keypoint = torch.tensor(keypoint, dtype=torch.float32)
 
+
         flat = keypoint.view(-1, 2)
         global_mins, _ = flat.min(dim=0)
         global_maxs, _ = flat.max(dim=0)
@@ -58,9 +83,14 @@ class KeypointDataset():
 
         keypoint_normalized = (keypoint - gm) / gr
 
+        # clean noise 
+
+        keypoint_normalized, _ = self.filter_unstable_keypoints_to_num(keypoint_normalized, keep_n=230)
+
         # print(keypoint.size())
 
         if self.return_label:
             return keypoint_normalized, torch.tensor(embedding), label
 
         return keypoint_normalized, torch.tensor(embedding), None
+    
