@@ -43,7 +43,7 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
         max_seq_length=301
     )
     model = torch.compile(model, 
-                            backend="aot_eager",
+                            backend="inductor",
                             dynamic=True
     ).to(model_params["device"])
 
@@ -62,6 +62,7 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
         patience=2, 
         min_lr=1e-7
     )
+    trainer.prepare_optimizer_scheduler()
 
     for epoch in trange(trainer.epochs, desc="Epochs"):
         _ = trainer._train_epoch(epoch)
