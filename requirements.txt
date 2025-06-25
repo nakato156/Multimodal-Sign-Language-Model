@@ -11,3 +11,5 @@ grpcio-tools
 optuna
 onnxruntime-gpu
 onnxscript
+accelerate
+transformers

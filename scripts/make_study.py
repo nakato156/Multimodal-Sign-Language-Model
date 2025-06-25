@@ -40,8 +40,8 @@ def run(
     })
 
     # datasets
-    tr_ds, val_ds = prepare_datasets(h5_file, train_ratio, n_keypoints=230)
-    tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=4)
+    tr_ds, val_ds, tr_len, val_len = prepare_datasets(h5_file, train_ratio, n_keypoints=230)
+    tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=4, train_length=tr_len, val_length=val_len)
 
     # optuna
     storage = f"sqlite:///study_models.db"
