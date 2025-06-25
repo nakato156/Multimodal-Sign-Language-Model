@@ -39,10 +39,12 @@ def run(
         "device": device if model_parameters.get("device") == "auto" else model_parameters.get("device", device),
     })
 
+
     # datasets
     tr_ds, val_ds, tr_len, val_len = prepare_datasets(h5_file, train_ratio, n_keypoints=230)
     tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=4, train_length=tr_len, val_length=val_len)
 
+    print("Batch Size: ", train_config["batch_size"])
     # optuna
     storage = f"sqlite:///study_models.db"
     study = optuna.create_study(study_name=f"model_{train_config['model_version']}",

@@ -1,5 +1,6 @@
 import torch._inductor.config
 from tqdm import tqdm
+from torch.nn.utils import clip_grad_norm_
 
 from accelerate import Accelerator
 import torch
@@ -16,8 +17,6 @@ from src.mslm.utils.early_stopping import EarlyStopping
 from src.mslm.checkpoint.manager import CheckpointManager
 from src.mslm.training import imitator_loss
 import nvtx
-
-torch.autograd.set_detect_anomaly(True)
 
 class Trainer:
     def __init__(self, model, train_loader, val_loader, compile=True, **kwargs):
@@ -200,7 +199,7 @@ class Trainer:
         return total_loss
 
     def _forward_loss(self, keypoint, mask_frame, embedding, mask_embedding):
-        with autocast(device_type=self.device.type, dtype=self.dtype_ac):
+        with self.accelerator.autocast():
             output = self.model(keypoint, mask_frame)
             loss = self.criterion(output, embedding, mask_embedding)
         return loss           
@@ -208,15 +207,18 @@ class Trainer:
     @nvtx.annotate("Train: Train Batch", color="green")
     def _train_batch(self, keypoint, mask_frame, embedding, mask_embedding):
         if not self.prof:
-            loss = self._forward_loss(keypoint, mask_frame, embedding, mask_embedding)
-            self.accelerator.backward(loss)
+            with torch.autograd.set_detect_anomaly(True):
+                loss = self._forward_loss(keypoint, mask_frame, embedding, mask_embedding)
+                self.accelerator.backward(loss)
+            self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.optimizer.step()
             self.optimizer.zero_grad(set_to_none=True)        
         else:
-            with nvtx.annotate("Forward Pass", color="blue"):
-                loss = self._forward_loss(keypoint, mask_frame, embedding, mask_embedding)
-            with nvtx.annotate("Backward Pass", color="blue"):
-                self.accelerator.backward(loss)
+            with torch.autograd.set_detect_anomaly(True):
+                with nvtx.annotate("Forward Pass", color="blue"):
+                    loss = self._forward_loss(keypoint, mask_frame, embedding, mask_embedding)
+                with nvtx.annotate("Backward Pass", color="blue"):
+                        self.accelerator.backward(loss)
             with nvtx.annotate("Update", color="blue"):    
                 self.optimizer.step()
                 self.optimizer.zero_grad(set_to_none=True)        

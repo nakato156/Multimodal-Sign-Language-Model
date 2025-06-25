@@ -26,7 +26,7 @@ def lr_objetive(trial, train_dataloader, val_dataloader, **params):
 
 def complete_objective(trial, train_dataloader, val_dataloader, model_params, train_config):
     hidden_size   = trial.suggest_categorical("hidden_size", [512, 1024, 2048])
-    nhead         = trial.suggest_categorical("nhead",       [4, 8, 16, 32, 64])
+    nhead         = trial.suggest_categorical("nhead",       [4, 8, 16, 32])
     ff_dim        = trial.suggest_int("ff_dim", 1024, 3072, step=256)
     n_layers      = trial.suggest_categorical("n_layers",    [2, 4, 6, 8, 10, 12])
     learning_rate = trial.suggest_float("lr", 5e-5, 1e-3, log=True)
