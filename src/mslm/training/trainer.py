@@ -73,12 +73,11 @@ class Trainer:
             weight_decay=1e-3,
             foreach=True
         )
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer,
-            mode='min',
-            factor=0.5,
-            patience=2,
-            min_lr=1e-7
+            T_max=self.epochs,
+            eta_min=1e-6,
+            last_epoch=-1
         )
         self.prof = prof
         train_loss = 0
@@ -92,7 +91,8 @@ class Trainer:
                 self.ckpt_mgr.save_model(self.model, epoch)
 
             val_loss = self._val(epoch)
-            self.scheduler.step(val_loss)
+            if self.scheduler is not None:
+                self.scheduler.step()
             if self.early_stopping.stop:
                 self.ckpt_mgr.save_model(self.model, epoch)
 
