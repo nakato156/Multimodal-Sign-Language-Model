@@ -72,7 +72,7 @@ def run():
     }
 
     mp_kwargs["device"] = device
-    mp_kwargs["input_size"] = 250*2
+    mp_kwargs["input_size"] = 230*2
 
     print(hyperparameters)
     print(model_parameters)

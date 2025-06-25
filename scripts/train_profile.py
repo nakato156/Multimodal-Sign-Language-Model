@@ -8,7 +8,8 @@ def run(
     checkpoint_interval: int,
     log_interval: int,
     train_ratio: float = 0.8,
-    profile_pytorch: bool = False
+    profile_pytorch: bool = False,
+    n_keypoints: int = 230
 ):
     _, _, h5_file = setup_paths()
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -32,9 +33,10 @@ def run(
         "train_ratio": train_ratio,
         "validation_ratio": round(1 - train_ratio, 2),
         "device": device if model_parameters.get("device") == "auto" else model_parameters.get("device", device),
+        "n_keypoints": n_keypoints
     })
     
-    tr_ds, val_ds = prepare_datasets(h5_file, train_ratio)
+    tr_ds, val_ds = prepare_datasets(h5_file, train_ratio, n_keypoints)
     tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=4)
 
     model = build_model(**model_parameters)
@@ -53,6 +55,7 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint_interval", type=int, default=5, help="Interval for saving checkpoints.")
     parser.add_argument("--log_interval", type=int, default=2, help="Interval for logging training progress.")
     parser.add_argument("--profile_pytorch", action="store_true", default=False, help="Interval for pytorch profiling.")
+    parser.add_argument("--num_keypoints", type=int, default=230, help="Number of keypoints to use in the model.")
     args = parser.parse_args()
 
-    run(args.epochs, args.batch_size, args.checkpoint_interval, args.log_interval, profile_pytorch=args.profile_pytorch)
+    run(args.epochs, args.batch_size, args.checkpoint_interval, args.log_interval, profile_pytorch=args.profile_pytorch, n_keypoints=args.num_keypoints)

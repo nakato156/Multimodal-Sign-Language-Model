@@ -32,11 +32,11 @@ def setup_paths():
     h5_file = path_vars.h5_file
     return data_path, model_path, h5_file
 
-def prepare_datasets(h5File, train_ratio):
+def prepare_datasets(h5File, train_ratio, n_keypoints=230):
     """Carga el dataset base, lo envuelve y lo divide en entrenamiento y validación."""
-    keypoint_reader = KeypointDataset(h5Path=h5File, return_label=False)
+    keypoint_reader = KeypointDataset(h5Path=h5File, return_label=False, n_keypoints=n_keypoints)
 
-    train_dataset, validation_dataset = random_split(keypoint_reader, [train_ratio, 1 - train_ratio])
+    train_dataset, validation_dataset = random_split(keypoint_reader, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
     print(f"Train size:\t{len(train_dataset)}\nValidation size:\t{len(validation_dataset)}")
     return train_dataset, validation_dataset
 

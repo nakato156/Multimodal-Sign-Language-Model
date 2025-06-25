@@ -34,7 +34,7 @@ class KeypointDataset():
     def __len__(self):
         return len(self.valid_index)
     
-    def filter_unstable_keypoints_to_num(keypoints, keep_n=230):
+    def filter_unstable_keypoints_to_num(self, keypoints, keep_n):
         """
         Conserva los 'keep_n' keypoints más estables (con menor varianza temporal).
         """
@@ -85,7 +85,7 @@ class KeypointDataset():
 
         # clean noise 
 
-        keypoint_normalized, _ = self.filter_unstable_keypoints_to_num(keypoint_normalized, keep_n=230)
+        keypoint_normalized, _ = self.filter_unstable_keypoints_to_num(keypoint_normalized, self.n_keypoints)
 
         # print(keypoint.size())
 
