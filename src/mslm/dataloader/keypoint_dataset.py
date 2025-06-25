@@ -22,9 +22,6 @@ class KeypointDataset():
             self.valid_index = []
 
             for dataset in datasets:
-                if dataset != "dataset2":
-                    continue
-
                 #group  = list(f[dataset].keys())
                 clip_ids  = list(f[dataset]["embeddings"].keys())
 

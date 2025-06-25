@@ -83,15 +83,14 @@ class Imitator(nn.Module):
             nn.Linear(output_size * 2, output_size)
         )
 
-    @torch.compile(dynamic=True)
     def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor=None) -> torch.Tensor:
         """
         x: Tensor of frames
         returns: Tensor of embeddings for each token (128 tokens of frames)
         """
 
-        def transformer_block(x):
-            return self.transformer(x,src_key_padding_mask=frames_padding_mask)
+        #def _transformer_block(x):
+        #    return self.transformer(x,src_key_padding_mask=frames_padding_mask)
 
         B, T, D, K = x.shape                # x -> [batch_size, T, input_size]
         x = x.view(B, T,  D * K)            # [B, T, input_size]
@@ -114,22 +113,12 @@ class Imitator(nn.Module):
         x = self.linear_hidden(x)           # [B, pool_dim, hidden]
 
         x = self.pe(x)
-        if self.training:
-            x = checkpoint.checkpoint(
-                transformer_block, 
-                x,
-                use_reentrant=True
-            )                               # [B, pool_dim, hidden]
-        else:
-            x = self.transformer(x, src_key_padding_mask=frames_padding_mask)
+        x = self.transformer(x, src_key_padding_mask=frames_padding_mask)  # [B, pool_dim, hidden]
 
-        M = self.proj(x).contiguous()        # [B, pool_dim, output_size]
+        M = self.proj(x)       # [B, pool_dim, output_size]
         
-        Q = self.token_queries.unsqueeze(0).expand(B, -1, -1).contiguous()   # [B, n_tokens, output_size]
-        
-        if frames_padding_mask is not None:
-            frames_padding_mask = frames_padding_mask.contiguous()
-
+        Q = self.token_queries.unsqueeze(0).expand(B, -1, -1)   # [B, n_tokens, output_size]
+    
         attn_out, attn_w = self.cross_attn(
             query=Q,
             key=M,

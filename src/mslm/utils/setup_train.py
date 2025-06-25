@@ -23,7 +23,6 @@ import torch._dynamo as dt
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32   = True
 
-
 #torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
 
 def setup_paths():
@@ -85,8 +84,8 @@ def build_model(input_size, output_size, device, compile=True, **kwargs):
     """Construye, compila y retorna el modelo Imitator."""
     model = Imitator(input_size=input_size, output_size=output_size, **kwargs).to(device)
     if compile:
-        model = torch.compile(model, 
-                              options={"triton.cudagraphs": True}
+        model = torch.compile(model,
+                              dynamic=True
         )
     print(model)
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
