@@ -71,6 +71,7 @@ class KeypointDataset():
         keypoint = torch.tensor(keypoint, dtype=torch.float32)
 
 
+
         flat = keypoint.view(-1, 2)
         global_mins, _ = flat.min(dim=0)
         global_maxs, _ = flat.max(dim=0)
