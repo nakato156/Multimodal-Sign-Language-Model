@@ -1,5 +1,6 @@
 import os
 #os.environ["TORCH_LOGS"] = "+dynamic, recompiles"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 import torch
 import random

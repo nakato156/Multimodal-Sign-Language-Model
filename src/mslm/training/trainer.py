@@ -239,6 +239,7 @@ class Trainer:
             else:
                 val_loss += loss.detach()
         final_val_loss = val_loss.item() / len(self.val_loader)
+        self.writer.add_scalar("Loss/val", final_val_loss, epoch)
 
         if epoch % self.log_interval == 0:
             tqdm.write(f"Validation loss: {final_val_loss}")

@@ -77,5 +77,6 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
         # Early stopping interno
         if trainer.early_stopping.stop:
             break
-
+    
+    torch.cuda.empty_cache()
     return val_loss
