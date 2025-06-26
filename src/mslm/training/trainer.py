@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from src.mslm.utils.early_stopping import EarlyStopping
 from src.mslm.checkpoint.manager import CheckpointManager
-from src.mslm.training import imitator_loss
+from src.mslm.training import imitator_loss_masked
 import nvtx
 
 class Trainer:
@@ -38,7 +38,7 @@ class Trainer:
         self.scaler = GradScaler(device=self.device)
         self.early_stopping = EarlyStopping(patience=100)
 
-        self.criterion = imitator_loss
+        self.criterion = imitator_loss_masked
         self.prof = False
         self.distributed = None
         self.dtype_ac = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else None

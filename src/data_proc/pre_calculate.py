@@ -29,3 +29,18 @@ class LLM:
         t = torch.tensor(embeddings["data"][0]["embedding"]).to('cuda')
         print(f"Embedding shape: {t.shape}")
         return t
+
+
+if __name__ == "__main__":
+    main_directory = os.path.dirname(os.path.abspath(__file__))
+    main_directory = "/home/giorgio6846/Code/Sign-AI"
+    llm = LLM(main_directory)
+    llm.load_model()
+    
+    label = "Example text for embedding"
+    embedding = llm.run(label)
+    
+    print(f"Generated embedding: {embedding}")
+    
+    llm.unload_model()
+    print("Model unloaded and resources cleaned up.")
