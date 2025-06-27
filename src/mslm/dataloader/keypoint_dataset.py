@@ -29,6 +29,7 @@ class KeypointDataset():
             datasets  = list(f.keys())
 
             self.valid_index = []
+            self.original_videos = []
 
             for dataset in datasets:
                 #group  = list(f[dataset].keys())
@@ -41,18 +42,19 @@ class KeypointDataset():
                             for i in self.data_augmentation_dict:
                                 self.valid_index.append((dataset, clip, i))
                                 self.video_lengths.append(shape)
+                            self.original_videos.append("")
                         else: 
                             self.valid_index.append((dataset, clip))
                             self.video_lengths.append(shape)
 
     def split_dataset(self, train_ratio):
-        train_dataset, validation_dataset = random_split(self, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
-
         if self.data_augmentation:
+            train_dataset, validation_dataset = random_split(self.original_videos, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
             train_length = [self.video_lengths[i+x] 
                             for x in self.data_augmentation_dict 
                             for i in train_dataset.indices]
         else:
+            train_dataset, validation_dataset = random_split(self, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
             train_length = [self.video_lengths[i] for i in train_dataset.indices]
     
         val_length = [self.video_lengths[i] for i in validation_dataset.indices] 
@@ -60,7 +62,7 @@ class KeypointDataset():
         return train_dataset, validation_dataset, train_length, val_length
 
     def get_video_lengths(self):
-        return self.video_lengths
+        return self.video_lengths 
     
     def filter_unstable_keypoints_to_num(self, keypoints, keep_n):
         """
@@ -97,9 +99,9 @@ class KeypointDataset():
 
         return  (keypoint - gm) / gr
 
-    def length_variance(self, keypoint, scale_range=(0.8, 1.2)):
+    def length_variance(self, keypoint, scale_range=(0.8, 1.5)):
         T, J, C = keypoint.shape
-        scale = random.uniform(scale_range)
+        scale = random.uniform(*scale_range)
         T_new = int(round(T * scale))
         
         orig_times = np.linspace(0, T-1, num=T)
@@ -110,8 +112,8 @@ class KeypointDataset():
             np.interp(new_times, orig_times, flat[:, d])
             for d in range(J*C)
         ], axis = 1)
-        
-        return keypoint.reshape(T_new, J, C)
+        keypoints_streched = streched.reshape(T_new, J, C)
+        return keypoints_streched
     
     def guassian_jitter(self, keypoint, sigma=5.0, clip=3.0):
         keypoint_jitter = np.random.normal(loc=0.0, scale=sigma, size=keypoint.shape)
@@ -122,13 +124,13 @@ class KeypointDataset():
         return keypoint + keypoint_jitter
 
     def __len__(self):
-        return len(self.valid_index)
+        if self.data_augmentation:
+            return int(len(self.valid_index)/len(self.data_augmentation_dict))
+        else:
+            return len(self.valid_index)
 
     def __getitem__(self, idx):
-        if self.data_augmentation:
-            mapped_idx = self.valid_index[idx]
-        else:
-            mapped_idx = self.valid_index[idx]
+        mapped_idx = self.valid_index[idx]
             
         with h5py.File(self.h5Path, 'r') as f:
             keypoint = f[mapped_idx[0]]["keypoints"][mapped_idx[1]][:]
@@ -137,15 +139,15 @@ class KeypointDataset():
             if self.return_label:
                 label = f[mapped_idx[0]]["labels"][mapped_idx[1]][:][0].decode()
 
-        #Keypoints a Tensor
-        keypoint = torch.tensor(keypoint, dtype=torch.float32)
-
         if self.data_augmentation:
             if self.data_augmentation_dict[mapped_idx[2]] == "Gaussian_jitter":
-                keypoint = self.guassian_jitter(keypoint)                
+                keypoint = self.guassian_jitter(keypoint)
                 
             elif self.data_augmentation_dict[mapped_idx[2]] == "Length_variance":
-                keypoint = self.length_variance(keypoint)                
+                keypoint = self.length_variance(keypoint)
+
+        #Keypoints a Tensor
+        keypoint = torch.tensor(keypoint, dtype=torch.float32)
 
         # Keypoint Normalization
         keypoint_normalized = self.keypoint_normalization(keypoint)
