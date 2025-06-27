@@ -37,7 +37,7 @@ class KeypointDataset():
                     shape = f[dataset]["keypoints"][clip].shape[0]
                     if shape < self.max_length:
                         if self.data_augmentation:
-                            for i in self.data_augmentation:
+                            for i in self.data_augmentation_dict:
                                 self.valid_index.append((dataset, clip, i))
                                 self.video_lengths.append(shape)
                         else: 
@@ -97,6 +97,8 @@ class KeypointDataset():
         return  (keypoint - gm) / gr
 
     def length_variance(self, keypoint):
+        print(keypoint)
+        
         return keypoint
     
     def guassian_jitter(self, keypoint):
