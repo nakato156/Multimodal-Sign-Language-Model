@@ -4,7 +4,7 @@ from torch.utils.data import random_split
 
 
 class KeypointDataset():
-    def __init__(self, h5Path, n_keypoints = 230, transform = None, return_label=False, max_length=5000):
+    def __init__(self, h5Path, n_keypoints = 230, transform = None, return_label=False, max_length=5000, data_augmentation=True):
         self.h5Path = h5Path
         self.n_keypoints = n_keypoints
         self.transform = transform
@@ -13,6 +13,13 @@ class KeypointDataset():
 
         self.max_length = max_length
         self.video_lengths = []
+        self.data_augmentation = data_augmentation
+
+        self.data_augmentation_dict = {
+            0: "Original",
+            1: "Length_variance",
+            2: "Gaussian_jitter",
+        }
 
         self.processData()
 
@@ -29,22 +36,30 @@ class KeypointDataset():
                 for clip in clip_ids:
                     shape = f[dataset]["keypoints"][clip].shape[0]
                     if shape < self.max_length:
-                        self.valid_index.append((dataset, clip))
-                        self.video_lengths.append(shape)
+                        if self.data_augmentation:
+                            for i in self.data_augmentation:
+                                self.valid_index.append((dataset, clip, i))
+                                self.video_lengths.append(shape)
+                        else: 
+                            self.valid_index.append((dataset, clip))
+                            self.video_lengths.append(shape)
 
     def split_dataset(self, train_ratio):
         train_dataset, validation_dataset = random_split(self, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
+
+        if self.data_augmentation:
+            train_length = [self.video_lengths[i+x] 
+                            for x in self.data_augmentation_dict 
+                            for i in train_dataset.indices]
+        else:
+            train_length = [self.video_lengths[i] for i in train_dataset.indices]
     
-        train_length = [self.video_lengths[i] for i in train_dataset.indices]
         val_length = [self.video_lengths[i] for i in validation_dataset.indices] 
 
         return train_dataset, validation_dataset, train_length, val_length
 
     def get_video_lengths(self):
         return self.video_lengths
-
-    def __len__(self):
-        return len(self.valid_index)
     
     def filter_unstable_keypoints_to_num(self, keypoints, keep_n):
         """
@@ -68,22 +83,7 @@ class KeypointDataset():
 
         return filtered, stable_mask
 
-
-    def __getitem__(self, idx):
-        mapped_idx = self.valid_index[idx]
-
-        with h5py.File(self.h5Path, 'r') as f:
-            keypoint = f[mapped_idx[0]]["keypoints"][mapped_idx[1]][:]
-            embedding = f[mapped_idx[0]]["embeddings"][mapped_idx[1]][:]
-        
-            if self.return_label:
-                label = f[mapped_idx[0]]["labels"][mapped_idx[1]][:][0].decode()
-
-        #Keypoints a Tensor
-        keypoint = torch.tensor(keypoint, dtype=torch.float32)
-
-
-
+    def keypoint_normalization(self, keypoint):
         flat = keypoint.view(-1, 2)
         global_mins, _ = flat.min(dim=0)
         global_maxs, _ = flat.max(dim=0)
@@ -94,16 +94,47 @@ class KeypointDataset():
         gm = global_mins.unsqueeze(0).unsqueeze(0)
         gr = global_ranges.unsqueeze(0).unsqueeze(0)
 
-        keypoint_normalized = (keypoint - gm) / gr
+        return  (keypoint - gm) / gr
 
+    def length_variance(self, keypoint):
+        return keypoint
+    
+    def guassian_jitter(self, keypoint):
+        return keypoint
+
+    def __len__(self):
+        return len(self.valid_index)
+
+    def __getitem__(self, idx):
+        if self.data_augmentation:
+            mapped_idx = self.valid_index[idx]
+        else:
+            mapped_idx = self.valid_index[idx]
+            
+        with h5py.File(self.h5Path, 'r') as f:
+            keypoint = f[mapped_idx[0]]["keypoints"][mapped_idx[1]][:]
+            embedding = f[mapped_idx[0]]["embeddings"][mapped_idx[1]][:]
+        
+            if self.return_label:
+                label = f[mapped_idx[0]]["labels"][mapped_idx[1]][:][0].decode()
+
+        #Keypoints a Tensor
+        keypoint = torch.tensor(keypoint, dtype=torch.float32)
+
+        if self.data_augmentation:
+            if self.data_augmentation_dict[mapped_idx[2]] == "Gaussian_jitter":
+                keypoint = self.guassian_jitter(keypoint)                
+                
+            elif self.data_augmentation_dict[mapped_idx[2]] == "Length_variance":
+                keypoint = self.length_variance(keypoint)                
+
+        # Keypoint Normalization
+        keypoint_normalized = self.keypoint_normalization(keypoint)
+        
         # clean noise 
-
         keypoint_normalized, _ = self.filter_unstable_keypoints_to_num(keypoint_normalized, self.n_keypoints)
-
-        # print(keypoint.size())
 
         if self.return_label:
             return keypoint_normalized, torch.tensor(embedding), label
 
         return keypoint_normalized, torch.tensor(embedding), None
-    
