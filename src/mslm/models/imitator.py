@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from .components.positional_encoding import PositionalEncoding
 import torch.utils.checkpoint as checkpoint
+from torchvision.ops import stochastic_depth
 
 class Imitator(nn.Module):
     def __init__(
@@ -50,13 +51,13 @@ class Imitator(nn.Module):
         self.linear_hidden = nn.Linear(pool_dim, hidden_size)
 
         # Positional Encoding + Transformer
-        self.pe          = PositionalEncoding(hidden_size)
+        self.pe          = PositionalEncoding(hidden_size, dropout=0.2)
         encoder_layer    = nn.TransformerEncoderLayer(
             d_model=hidden_size,
             nhead=nhead,
             dim_feedforward=ff_dim,
             batch_first=True,
-            dropout=0.2,
+            dropout=0.4,
             norm_first=True
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
@@ -105,17 +106,18 @@ class Imitator(nn.Module):
         x = self.act1(x)                    # [B, pool_dim, hidden//2]
         x = x.transpose(1, 2)               # [B, hidden//2, pool_dim]
 
-        x = self.conv2(x)                  # [B, pool_dim, pool_dim]
-        x = x.transpose(1, 2)               # [B, pool_dim, pool_dim]
-        x = self.ln2(x)                     # [B, pool_dim, pool_dim]
-        x = self.act2(x)                    # [B, pool_dim, pool_dim]
+        x = self.conv2(x)                  # [B, hidden//2, pool_dim]
+        x = x.transpose(1, 2)               # [B, pool_dim, hidden//2]
+        x = self.ln2(x)                     # [B, pool_dim, hidden//2]
+        x = self.act2(x)                    # [B, pool_dim, hidden//2]
 
         x = self.linear_hidden(x)           # [B, pool_dim, hidden]
 
         x = self.pe(x)
         x = self.transformer(x, src_key_padding_mask=frames_padding_mask)  # [B, pool_dim, hidden]
 
-        M = self.proj(x)       # [B, pool_dim, output_size]
+        M = self.proj(x)     # [B, pool_dim, output_size]
+        # M = M.masked_fill(frames_padding_mask.unsqueeze(-1), 0.0)
         
         Q = self.token_queries.unsqueeze(0).expand(B, -1, -1)   # [B, n_tokens, output_size]
     
@@ -127,5 +129,5 @@ class Imitator(nn.Module):
         )  # [B, n_tokens, output_size]
         x = self.norm_attn(Q + attn_out)
         # print(f"Attention output shape: {attn_out.shape}, Q shape: {Q.shape}, M shape: {M.shape}")
-        x = x + self.proj_final(attn_out)        # [B, n_tokens, output_size]
+        #x = x + stochastic_depth(self.proj_final(attn_out), p=0.2, mode="row")        # [B, n_tokens, output_size]
         return x
