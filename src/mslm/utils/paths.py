@@ -47,7 +47,7 @@ class PathVariables:
         # Datos
         dp = bp.parent / "data"
         self.data_path = dp
-        self.h5_file = dp / "dataset_small25.hdf5"
+        self.h5_file = dp / "dataset.hdf5"
         #self.h5_file = "/home/giorgio6846/Code/Sign-AI/data/dataset.hdf5"
         #self.h5_file = "/home/exodia/sign-ai/dataset_small50.hdf5"
         #self.h5_file = "/home/exodia/sign-ai/dataset.hdf5"

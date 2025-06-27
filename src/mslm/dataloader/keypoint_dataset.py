@@ -1,8 +1,28 @@
 import h5py
 import torch
-from torch.utils.data import random_split
+from torch.utils.data import random_split, Dataset, Subset, ConcatDataset
 import numpy as np
 import random
+
+class TransformedSubset(Dataset):
+    def __init__(self, subset: Subset, transform_fn: callable, return_label=False):
+        self.subset    = subset
+        self.transform = transform_fn
+        self.return_label = return_label
+
+    def __len__(self):
+        return len(self.subset)
+
+    def __getitem__(self, idx):
+        keypoints, embedding, label = self.subset[idx]
+
+        if not isinstance(embedding, torch.Tensor):
+            embedding = torch.as_tensor(embedding, dtype=torch.float32)
+
+        if self.return_label:
+            return keypoints, embedding, label
+
+        return keypoints, embedding, None
 
 class KeypointDataset():
     def __init__(self, h5Path, n_keypoints=230, transform=None, return_label=False, max_length=5000, data_augmentation=True):
@@ -23,6 +43,7 @@ class KeypointDataset():
             5: "Scaling"
         }
 
+        self.dataset_length = 0
         self.processData()
 
     def processData(self):
@@ -47,6 +68,8 @@ class KeypointDataset():
                         else: 
                             self.valid_index.append((dataset, clip))
                             self.video_lengths.append(shape)
+                
+            self.dataset_length = len(self.valid_index)
 
     def split_dataset(self, train_ratio):
         if self.data_augmentation:
@@ -54,12 +77,23 @@ class KeypointDataset():
             train_length = [self.video_lengths[i+x] 
                             for x in self.data_augmentation_dict 
                             for i in train_dataset.indices]
+
+            train_subset = Subset(self, train_dataset.indices)
+            aug_subsets = [
+                TransformedSubset(train_subset, tf)
+                for tf in self.data_augmentation_dict.values()
+            ]
+            
+            train_dataset = ConcatDataset([train_subset, *aug_subsets])
+            
         else:
-            train_dataset, validation_dataset = random_split(self, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
+            train_dataset, validation_dataset = random_split(self.original_videos, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
             train_length = [self.video_lengths[i] for i in train_dataset.indices]
     
         val_length = [self.video_lengths[i] for i in validation_dataset.indices] 
+        self.dataset_length = len(val_length) + len(train_length)
 
+        print("Videos: ", self.dataset_length)
         return train_dataset, validation_dataset, train_length, val_length
 
     def get_video_lengths(self):
@@ -88,6 +122,8 @@ class KeypointDataset():
         return filtered, stable_mask
 
     def keypoint_normalization(self, keypoint):
+        keypoint = abs(keypoint)
+
         mask_keypoints = ~((keypoint[...,0] < 5) & (keypoint[...,1] < 5))
         
         valid_points = keypoint[mask_keypoints].view(-1, 2)
@@ -167,15 +203,10 @@ class KeypointDataset():
         return keypoint * scale
 
     def __len__(self):
-        if self.data_augmentation:
-            return int(len(self.valid_index)/len(self.data_augmentation_dict))
-        else:
-            return len(self.valid_index)
+        return self.dataset_length
 
     def __getitem__(self, idx):
         mapped_idx = self.valid_index[idx]
-
-        print(f"Mapped Index: {mapped_idx[0]}")
             
         with h5py.File(self.h5Path, 'r') as f:
             keypoint = f[mapped_idx[0]]["keypoints"][mapped_idx[1]][:]
@@ -190,16 +221,15 @@ class KeypointDataset():
             augmentation_type = self.data_augmentation_dict[mapped_idx[2]]
             keypoint = self.apply_augmentation(keypoint, augmentation_type)
         
-        keypoint = torch.tensor(keypoint, dtype=torch.float32)
         #Keypoints a Tensor
-        
-        
+        if not isinstance(keypoint, torch.Tensor):
+            keypoint = torch.as_tensor(keypoint, dtype=torch.float32)    
+    
         # Clean noise 
-        keypoint, _ = self.filter_unstable_keypoints_to_num(keypoint, self.n_keypoints)
+        #keypoint, _ = self.filter_unstable_keypoints_to_num(keypoint, self.n_keypoints)
 
         # Keypoint Normalization
         keypoint_normalized = self.keypoint_normalization(keypoint)
-
 
         if self.return_label:
             return keypoint_normalized, torch.tensor(embedding), label
