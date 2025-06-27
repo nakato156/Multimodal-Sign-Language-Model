@@ -1,8 +1,8 @@
 import h5py
 import torch
 from torch.utils.data import random_split
-import random
 import numpy as np
+import random
 
 class KeypointDataset():
     def __init__(self, h5Path, n_keypoints=230, transform=None, return_label=False, max_length=5000, data_augmentation=True):
@@ -30,6 +30,7 @@ class KeypointDataset():
             datasets  = list(f.keys())
 
             self.valid_index = []
+            self.original_videos = []
 
             for dataset in datasets:
                 clip_ids  = list(f[dataset]["embeddings"].keys())
@@ -41,18 +42,19 @@ class KeypointDataset():
                             for i in self.data_augmentation_dict:
                                 self.valid_index.append((dataset, clip, i))
                                 self.video_lengths.append(shape)
+                            self.original_videos.append("")
                         else: 
                             self.valid_index.append((dataset, clip))
                             self.video_lengths.append(shape)
 
     def split_dataset(self, train_ratio):
-        train_dataset, validation_dataset = random_split(self, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
-
         if self.data_augmentation:
+            train_dataset, validation_dataset = random_split(self.original_videos, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
             train_length = [self.video_lengths[i+x] 
                             for x in self.data_augmentation_dict 
                             for i in train_dataset.indices]
         else:
+            train_dataset, validation_dataset = random_split(self, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
             train_length = [self.video_lengths[i] for i in train_dataset.indices]
     
         val_length = [self.video_lengths[i] for i in validation_dataset.indices] 
@@ -60,7 +62,7 @@ class KeypointDataset():
         return train_dataset, validation_dataset, train_length, val_length
 
     def get_video_lengths(self):
-        return self.video_lengths
+        return self.video_lengths 
     
     def filter_unstable_keypoints_to_num(self, keypoints, keep_n):
         """
@@ -113,24 +115,30 @@ class KeypointDataset():
             return self.scaling(keypoint)
         return keypoint
 
-    def gaussian_jitter(self, keypoint):
-        noise = torch.randn_like(keypoint) * 0.01  # Ruido gaussiano
-        return keypoint + noise
-
-    def length_variance(self, keypoint):
-        """
-        Aumenta o disminuye la amplitud del movimiento de las articulaciones de forma aleatoria,
-        sin cambiar la cantidad de keypoints ni su secuencia temporal.
-        """
-        # Generar un factor de escala aleatorio para los movimientos de las articulaciones
-        scale = random.uniform(0.8, 1.2)
+    def length_variance(self, keypoint, scale_range=(0.8, 1.5)):
+        T, J, C = keypoint.shape
+        scale = random.uniform(*scale_range)
+        T_new = int(round(T * scale))
         
-        # Modificar las coordenadas de los keypoints multiplicando por el factor de escala
-        keypoint_scaled = keypoint * scale
+        orig_times = np.linspace(0, T-1, num=T)
+        new_times = np.linspace(0, T-1, num=T_new)
+
+        flat = keypoint.reshape(T, J*C)
+        streched = np.stack([
+            np.interp(new_times, orig_times, flat[:, d])
+            for d in range(J*C)
+        ], axis = 1)
+        keypoints_streched = streched.reshape(T_new, J, C)
+        return keypoints_streched
+    
+    def guassian_jitter(self, keypoint, sigma=5.0, clip=3.0):
+        keypoint_jitter = np.random.normal(loc=0.0, scale=sigma, size=keypoint.shape)
+
+        if clip is not None:
+            np.clip(keypoint_jitter, -clip, clip, out=keypoint_jitter)    
         
-        return keypoint_scaled
-
-
+        return keypoint + keypoint_jitter
+    
     def rotation_2D(self, keypoint):
         # Aseguramos que la rotación no cambie la cantidad de keypoints
         angle = random.uniform(-15, 15)  # Rotación aleatoria en grados
@@ -150,13 +158,13 @@ class KeypointDataset():
         return keypoint * scale
 
     def __len__(self):
-        return len(self.valid_index)
+        if self.data_augmentation:
+            return int(len(self.valid_index)/len(self.data_augmentation_dict))
+        else:
+            return len(self.valid_index)
 
     def __getitem__(self, idx):
-        if self.data_augmentation:
-            mapped_idx = self.valid_index[idx]
-        else:
-            mapped_idx = self.valid_index[idx]
+        mapped_idx = self.valid_index[idx]
             
         with h5py.File(self.h5Path, 'r') as f:
             keypoint = f[mapped_idx[0]]["keypoints"][mapped_idx[1]][:]
@@ -165,13 +173,13 @@ class KeypointDataset():
             if self.return_label:
                 label = f[mapped_idx[0]]["labels"][mapped_idx[1]][:][0].decode()
 
-        # Keypoints a Tensor
-        keypoint = torch.tensor(keypoint, dtype=torch.float32)
-
         if self.data_augmentation:
             augmentation_type = self.data_augmentation_dict[mapped_idx[2]]
             keypoint = self.apply_augmentation(keypoint, augmentation_type)
 
+        #Keypoints a Tensor
+        keypoint = torch.tensor(keypoint, dtype=torch.float32)
+        
         # Keypoint Normalization
         keypoint_normalized = self.keypoint_normalization(keypoint)
         
