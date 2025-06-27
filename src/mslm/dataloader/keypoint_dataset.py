@@ -25,7 +25,7 @@ class TransformedSubset(Dataset):
         return keypoints, embedding, None
 
 class KeypointDataset():
-    def __init__(self, h5Path, n_keypoints=230, transform=None, return_label=False, max_length=5000, data_augmentation=True):
+    def __init__(self, h5Path, n_keypoints=245, transform=None, return_label=False, max_length=5000, data_augmentation=True):
         self.h5Path = h5Path
         self.n_keypoints = n_keypoints
         self.transform = transform
@@ -214,6 +214,9 @@ class KeypointDataset():
         
             if self.return_label:
                 label = f[mapped_idx[0]]["labels"][mapped_idx[1]][:][0].decode()
+
+                # Clean noise 
+        keypoint, _ = self.filter_unstable_keypoints_to_num(keypoint, self.n_keypoints)
 
         if self.data_augmentation:
             keypoint = torch.tensor(keypoint, dtype=torch.float32)
