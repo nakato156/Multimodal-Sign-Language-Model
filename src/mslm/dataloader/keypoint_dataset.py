@@ -1,7 +1,8 @@
 import h5py
 import torch
 from torch.utils.data import random_split
-
+import numpy as np
+import random
 
 class KeypointDataset():
     def __init__(self, h5Path, n_keypoints = 230, transform = None, return_label=False, max_length=5000, data_augmentation=True):
@@ -96,13 +97,29 @@ class KeypointDataset():
 
         return  (keypoint - gm) / gr
 
-    def length_variance(self, keypoint):
-        print(keypoint)
+    def length_variance(self, keypoint, scale_range=(0.8, 1.2)):
+        T, J, C = keypoint.shape
+        scale = random.uniform(scale_range)
+        T_new = int(round(T * scale))
         
-        return keypoint
+        orig_times = np.linspace(0, T-1, num=T)
+        new_times = np.linspace(0, T-1, num=T_new)
+
+        flat = keypoint.reshape(T, J*C)
+        streched = np.stack([
+            np.interp(new_times, orig_times, flat[:, d])
+            for d in range(J*C)
+        ], axis = 1)
+        
+        return keypoint.reshape(T_new, J, C)
     
-    def guassian_jitter(self, keypoint):
-        return keypoint
+    def guassian_jitter(self, keypoint, sigma=5.0, clip=3.0):
+        keypoint_jitter = np.random.normal(loc=0.0, scale=sigma, size=keypoint.shape)
+
+        if clip is not None:
+            np.clip(keypoint_jitter, -clip, clip, out=keypoint_jitter)    
+        
+        return keypoint + keypoint_jitter
 
     def __len__(self):
         return len(self.valid_index)
