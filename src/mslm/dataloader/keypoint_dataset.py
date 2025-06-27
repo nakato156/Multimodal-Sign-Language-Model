@@ -50,7 +50,6 @@ def apply_augmentation(keypoint, augmentation_type):
     Aplica diferentes augmentaciones de acuerdo al tipo.
     """
     
-    print("Dataset:", augmentation_type)
     if augmentation_type == "Gaussian_jitter":
         return gaussian_jitter(keypoint)
     elif augmentation_type == "Length_variance":

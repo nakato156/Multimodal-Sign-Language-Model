@@ -184,10 +184,7 @@ class Trainer:
         self.model.train()
         total_loss = 0
         for keypoints, mask_frames, embeddings, mask_embeddings in self.train_loader:
-            torch._dynamo.mark_dynamic(keypoints, 1)
-            torch._dynamo.mark_dynamic(mask_frames, 1)
-            torch._dynamo.mark_dynamic(embeddings, 1)
-            torch._dynamo.mark_dynamic(mask_embeddings, 1)
+
             
             with self.accelerator.accumulate(self.model):
                 loss = self._train_batch(keypoints, mask_frames, embeddings, mask_embeddings)
@@ -206,6 +203,11 @@ class Trainer:
         return total_loss
 
     def _forward_loss(self, keypoint, mask_frame, embedding, mask_embedding):
+        torch._dynamo.mark_dynamic(keypoint, 1)
+        torch._dynamo.mark_dynamic(mask_frame, 1)
+        torch._dynamo.mark_dynamic(embedding, 1)
+        torch._dynamo.mark_dynamic(mask_embedding, 1)
+        
         with self.accelerator.autocast():
             keypoint = keypoint.to(torch.float32)
             embedding = embedding.to(torch.float32)
