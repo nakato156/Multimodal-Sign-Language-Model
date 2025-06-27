@@ -20,7 +20,8 @@ class DataServiceServicer(data_pb2_grpc.DataServiceServicer):
                 batch_size: int,
                 checkpoint_interval: int,
                 log_interval: int,
-                train_ratio: float = 0.8):
+                train_ratio: float = 0.8,
+                n_keypoints: int = 230):
         
         _, _, h5_file = setup_paths()
         device = "cuda"
@@ -28,7 +29,7 @@ class DataServiceServicer(data_pb2_grpc.DataServiceServicer):
         self.model_parameters = ConfigLoader("config/model/config.toml").load_config()
         self.model_parameters.update({
             "device": device if self.model_parameters.get("device") == "auto" else self.model_parameters.get("device", device),
-            "input_size": 250 * 2,
+            "input_size": 230 * 2,
             "output_size": 3072,
         })
 
@@ -43,6 +44,7 @@ class DataServiceServicer(data_pb2_grpc.DataServiceServicer):
             "train_ratio": train_ratio,
             "validation_ratio": round(1 - train_ratio, 2),
             "device": device if self.model_parameters.get("device") == "auto" else self.model_parameters.get("device", device),
+            "n_keypoints": n_keypoints,
         })
 
         self.tr_ds, self.val_ds = prepare_datasets(h5_file, train_ratio)
@@ -159,6 +161,7 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint_interval", type=int, default=5, help="Interval for saving checkpoints.")
     parser.add_argument("--log_interval", type=int, default=2, help="Interval for logging training progress.")
     parser.add_argument("--ip", type=str, default="0.0.0.0", help="Interval for logging training progress.")
+    parser.add_argument("--num_keypoints", type=int, default=230, help="Number of keypoints to use in the model.")
     args = parser.parse_args()
     
     serve(args, host=args.ip)
