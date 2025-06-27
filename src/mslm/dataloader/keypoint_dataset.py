@@ -1,24 +1,26 @@
 import h5py
 import torch
 from torch.utils.data import random_split
-
+import random
+import numpy as np
 
 class KeypointDataset():
-    def __init__(self, h5Path, n_keypoints = 230, transform = None, return_label=False, max_length=5000, data_augmentation=True):
+    def __init__(self, h5Path, n_keypoints=230, transform=None, return_label=False, max_length=5000, data_augmentation=True):
         self.h5Path = h5Path
         self.n_keypoints = n_keypoints
         self.transform = transform
-
         self.return_label = return_label
-
         self.max_length = max_length
         self.video_lengths = []
         self.data_augmentation = data_augmentation
-
+    
         self.data_augmentation_dict = {
             0: "Original",
             1: "Length_variance",
             2: "Gaussian_jitter",
+            3: "Rotation_2D",
+            4: "Horizontal_flip",
+            5: "Scaling"
         }
 
         self.processData()
@@ -30,7 +32,6 @@ class KeypointDataset():
             self.valid_index = []
 
             for dataset in datasets:
-                #group  = list(f[dataset].keys())
                 clip_ids  = list(f[dataset]["embeddings"].keys())
 
                 for clip in clip_ids:
@@ -96,13 +97,57 @@ class KeypointDataset():
 
         return  (keypoint - gm) / gr
 
+    def apply_augmentation(self, keypoint, augmentation_type):
+        """
+        Aplica diferentes augmentaciones de acuerdo al tipo.
+        """
+        if augmentation_type == "Gaussian_jitter":
+            return self.gaussian_jitter(keypoint)
+        elif augmentation_type == "Length_variance":
+            return self.length_variance(keypoint)
+        elif augmentation_type == "Rotation_2D":
+            return self.rotation_2D(keypoint)
+        elif augmentation_type == "Horizontal_flip":
+            return self.horizontal_flip(keypoint)
+        elif augmentation_type == "Scaling":
+            return self.scaling(keypoint)
+        return keypoint
+
+    def gaussian_jitter(self, keypoint):
+        noise = torch.randn_like(keypoint) * 0.01  # Ruido gaussiano
+        return keypoint + noise
+
     def length_variance(self, keypoint):
-        print(keypoint)
+        """
+        Aumenta o disminuye la amplitud del movimiento de las articulaciones de forma aleatoria,
+        sin cambiar la cantidad de keypoints ni su secuencia temporal.
+        """
+        # Generar un factor de escala aleatorio para los movimientos de las articulaciones
+        scale = random.uniform(0.8, 1.2)
         
-        return keypoint
-    
-    def guassian_jitter(self, keypoint):
-        return keypoint
+        # Modificar las coordenadas de los keypoints multiplicando por el factor de escala
+        keypoint_scaled = keypoint * scale
+        
+        return keypoint_scaled
+
+
+    def rotation_2D(self, keypoint):
+        # Aseguramos que la rotación no cambie la cantidad de keypoints
+        angle = random.uniform(-15, 15)  # Rotación aleatoria en grados
+        angle_rad = np.deg2rad(angle)
+        rotation_matrix = torch.tensor([[torch.cos(angle_rad), -torch.sin(angle_rad)], 
+                                       [torch.sin(angle_rad), torch.cos(angle_rad)]], dtype=torch.float32)
+        keypoint_rotated = torch.matmul(keypoint.view(-1, 2), rotation_matrix)
+        return keypoint_rotated.view(keypoint.shape)
+
+    def horizontal_flip(self, keypoint):
+        # Reflejar horizontalmente la secuencia de keypoints
+        return keypoint.flip(dims=[1])  # Reflejo horizontal
+
+    def scaling(self, keypoint):
+        # Escalar los keypoints sin cambiar su cantidad
+        scale = random.uniform(0.9, 1.1)
+        return keypoint * scale
 
     def __len__(self):
         return len(self.valid_index)
@@ -120,20 +165,17 @@ class KeypointDataset():
             if self.return_label:
                 label = f[mapped_idx[0]]["labels"][mapped_idx[1]][:][0].decode()
 
-        #Keypoints a Tensor
+        # Keypoints a Tensor
         keypoint = torch.tensor(keypoint, dtype=torch.float32)
 
         if self.data_augmentation:
-            if self.data_augmentation_dict[mapped_idx[2]] == "Gaussian_jitter":
-                keypoint = self.guassian_jitter(keypoint)                
-                
-            elif self.data_augmentation_dict[mapped_idx[2]] == "Length_variance":
-                keypoint = self.length_variance(keypoint)                
+            augmentation_type = self.data_augmentation_dict[mapped_idx[2]]
+            keypoint = self.apply_augmentation(keypoint, augmentation_type)
 
         # Keypoint Normalization
         keypoint_normalized = self.keypoint_normalization(keypoint)
         
-        # clean noise 
+        # Clean noise 
         keypoint_normalized, _ = self.filter_unstable_keypoints_to_num(keypoint_normalized, self.n_keypoints)
 
         if self.return_label:
