@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 from .components.positional_encoding import PositionalEncoding
-import torch.utils.checkpoint as checkpoint
 from torchvision.ops import stochastic_depth
+import torch._dynamo.config as cfg
 
 class Imitator(nn.Module):
     def __init__(
@@ -16,7 +16,8 @@ class Imitator(nn.Module):
         max_seq_length: int = 301,
     ):
         super().__init__()
-        
+        torch.set_default_dtype(torch.float32)
+
         self.cfg = {
             "input_size": input_size,
             "hidden_size": hidden_size,

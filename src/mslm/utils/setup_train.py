@@ -3,6 +3,7 @@ import random
 
 torch.manual_seed(23)
 random.seed(23)
+torch.set_default_dtype(torch.float32) 
 
 from torch.utils.data import DataLoader, random_split
 
@@ -22,6 +23,7 @@ import torch._dynamo as dt
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32   = True
+torch.set_default_dtype(torch.float32)
 
 #torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
 
@@ -82,7 +84,9 @@ def create_dataloaders(train_dataset, validation_dataset, batch_size, num_worker
 
 def build_model(input_size, output_size, device, compile=True, **kwargs):
     """Construye, compila y retorna el modelo Imitator."""
-    model = Imitator(input_size=input_size, output_size=output_size, **kwargs).to(device)
+    model = Imitator(input_size=input_size, output_size=output_size, **kwargs)
+    model = model.to(torch.float)
+    model = model.to(device)
     if compile:
         model = torch.compile(model,
                               dynamic=True

@@ -19,12 +19,15 @@ class TransformedSubset(Dataset):
         if not isinstance(embedding, torch.Tensor):
             embedding = torch.as_tensor(embedding, dtype=torch.float32)
 
+        keypoints.to(torch.float32)
+        embedding.to(torch.float32)
+
         if self.return_label:
             return keypoints, embedding, label
 
         return keypoints, embedding, None
 
-class KeypointDataset():
+class KeypointDataset(Dataset):
     def __init__(self, h5Path, n_keypoints=245, transform=None, return_label=False, max_length=5000, data_augmentation=True):
         self.h5Path = h5Path
         self.n_keypoints = n_keypoints
@@ -215,26 +218,31 @@ class KeypointDataset():
             if self.return_label:
                 label = f[mapped_idx[0]]["labels"][mapped_idx[1]][:][0].decode()
 
-                # Clean noise 
+        #Keypoints a Tensor
+        if not isinstance(keypoint, torch.Tensor):
+            keypoint = torch.as_tensor(keypoint, dtype=torch.float32)    
+
+        # Clean noise 
         keypoint, _ = self.filter_unstable_keypoints_to_num(keypoint, self.n_keypoints)
 
         if self.data_augmentation:
-            keypoint = torch.tensor(keypoint, dtype=torch.float32)
-            
             augmentation_type = self.data_augmentation_dict[mapped_idx[2]]
             keypoint = self.apply_augmentation(keypoint, augmentation_type)
         
         #Keypoints a Tensor
         if not isinstance(keypoint, torch.Tensor):
             keypoint = torch.as_tensor(keypoint, dtype=torch.float32)    
-    
-        # Clean noise 
-        #keypoint, _ = self.filter_unstable_keypoints_to_num(keypoint, self.n_keypoints)
 
+        if not isinstance(embedding, torch.Tensor):
+            embedding = torch.as_tensor(embedding, dtype=torch.float32)
+    
         # Keypoint Normalization
-        keypoint_normalized = self.keypoint_normalization(keypoint)
+        keypoint = self.keypoint_normalization(keypoint)
+
+        keypoint.to(torch.float32)
+        embedding.to(torch.float32)
 
         if self.return_label:
-            return keypoint_normalized, torch.tensor(embedding), label
+            return keypoint, embedding, label
 
-        return keypoint_normalized, torch.tensor(embedding), None
+        return keypoint, embedding, None

@@ -1,4 +1,3 @@
-import torch._inductor.config
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
@@ -23,7 +22,7 @@ import nvtx
 class Trainer:
     def __init__(self, model, train_loader, val_loader, compile=True, **kwargs):
         #Accelerator module
-        self.accelerator = Accelerator()
+        self.accelerator = Accelerator(mixed_precision="bf16")
         self.device = self.accelerator.device
 
         #Hyperparameters
@@ -52,6 +51,7 @@ class Trainer:
 
         #Model
         self.model = self.accelerator.prepare_model(model)
+        self.model = model.to(torch.float32)
 
         #Dataloaders
         self.train_loader = self.accelerator.prepare_data_loader(train_loader)
@@ -63,9 +63,6 @@ class Trainer:
         #Optimizer
         self.optimizer = None
         self.scheduler = None
-
-        #Autograd 
-        self.dtype_ac = torch.bfloat16 if self.accelerator.mixed_precision == "bf16" else torch.float16
 
         #Options 
         self.prof = False
@@ -210,6 +207,9 @@ class Trainer:
 
     def _forward_loss(self, keypoint, mask_frame, embedding, mask_embedding):
         with self.accelerator.autocast():
+            keypoint = keypoint.to(torch.float32)
+            embedding = embedding.to(torch.float32)
+            
             output = self.model(keypoint, mask_frame)
             loss = self.criterion(output, embedding, mask_embedding)
         return loss           
