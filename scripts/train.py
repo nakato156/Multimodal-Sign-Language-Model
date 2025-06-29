@@ -2,8 +2,6 @@ import os
 #os.environ["TORCH_LOGS"] = "+dynamic, recompiles"
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import torch
-torch.set_default_dtype(torch.float32)
-
 import random
 
 torch.manual_seed(23)
@@ -18,7 +16,7 @@ def run(
     checkpoint_interval: int,
     log_interval: int,
     train_ratio: float = 0.8,
-    key_points: int = 230
+    key_points: int = 133
 ):
     _, _, h5_file = setup_paths()
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -26,7 +24,7 @@ def run(
     model_parameters = ConfigLoader("config/model/config.toml").load_config()
     model_parameters.update({
         "device": device if model_parameters.get("device") == "auto" else model_parameters.get("device", device),
-        "input_size": 250 * 2,
+        "input_size": 133 * 2,
         "output_size": 3072,
     })
     

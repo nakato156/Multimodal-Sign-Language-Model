@@ -4,6 +4,7 @@ import random
 torch.manual_seed(23)
 random.seed(23)
 torch.set_default_dtype(torch.float32) 
+torch._dynamo.config.recompile_limit = 64
 
 from torch.utils.data import DataLoader, random_split
 
@@ -34,7 +35,7 @@ def setup_paths():
     h5_file = path_vars.h5_file
     return data_path, model_path, h5_file
 
-def prepare_datasets(h5File, train_ratio, n_keypoints=245):
+def prepare_datasets(h5File, train_ratio, n_keypoints=112):
     """Carga el dataset base, lo envuelve y lo divide en entrenamiento y validación."""
     keypoint_reader = KeypointDataset(h5Path=h5File, return_label=False, n_keypoints=n_keypoints, data_augmentation=True)
     train_dataset, validation_dataset, train_length, val_length = keypoint_reader.split_dataset(train_ratio)
@@ -89,7 +90,8 @@ def build_model(input_size, output_size, device, compile=True, **kwargs):
     model = model.to(device)
     if compile:
         model = torch.compile(model,
-                              dynamic=True
+                              dynamic=True,
+                              
         )
     print(model)
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")

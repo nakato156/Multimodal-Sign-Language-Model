@@ -116,6 +116,8 @@ class Trainer:
             elif self.early_stopping.stop:
                 self.ckpt_mgr.save_model(self.model, epoch)
 
+            self.scheduler.step()
+
             if self.early_stopping.stop:
                 break
 
@@ -184,9 +186,8 @@ class Trainer:
         self.model.train()
         total_loss = 0
         for keypoints, mask_frames, embeddings, mask_embeddings in self.train_loader:
-
-            
             with self.accelerator.accumulate(self.model):
+                self.optimizer.zero_grad(set_to_none=True)        
                 loss = self._train_batch(keypoints, mask_frames, embeddings, mask_embeddings)
             if self.distributed is not None:
                 loss_tensor = loss.to(self.device)
@@ -211,7 +212,7 @@ class Trainer:
         with self.accelerator.autocast():
             keypoint = keypoint.to(torch.float32)
             embedding = embedding.to(torch.float32)
-            
+
             output = self.model(keypoint, mask_frame)
             loss = self.criterion(output, embedding, mask_embedding)
         return loss           
@@ -232,8 +233,6 @@ class Trainer:
                       )
             self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.optimizer.step()
-            self.scheduler.step()
-            self.optimizer.zero_grad(set_to_none=True)        
         else:
             with torch.autograd.set_detect_anomaly(True):
                 with nvtx.annotate("Forward Pass", color="blue"):
@@ -243,15 +242,13 @@ class Trainer:
             with nvtx.annotate("Update", color="blue"):    
                 self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.optimizer.step()
-                self.scheduler.step()
-                self.optimizer.zero_grad(set_to_none=True)        
         return loss
 
     @nvtx.annotate("Validation Section", color="green")
     def _val(self, epoch):
         self.model.eval()
         val_loss=0
-        for keypoints, mask_frames, embeddings, mask_embeddings in self.val_loader:
+        for keypoints, mask_frames, embeddings, mask_embeddings in self.val_loader:        
             loss = self._val_batch(keypoints, mask_frames, embeddings, mask_embeddings)
             if self.distributed is not None:
                 loss_tensor = loss.to(self.device)

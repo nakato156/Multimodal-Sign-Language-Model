@@ -7,7 +7,7 @@ import torch._dynamo.config as cfg
 class Imitator(nn.Module):
     def __init__(
         self,
-        input_size: int = 250*2,
+        input_size: int = 133*2,
         hidden_size: int = 512,
         output_size: int = 3072,
         nhead: int = 8,
@@ -98,6 +98,7 @@ class Imitator(nn.Module):
         x = x.view(B, T,  D * K)            # [B, T, input_size]
         
         x = self.linear_feat(x)             # [B, T, hidden//2]
+        torch._dynamo.mark_dynamic(x, 1)
 
         x = x.transpose(1, 2)               # [B, hidden//2, T]
         # se mantiene T' = T o reducirdo a pool_dim
