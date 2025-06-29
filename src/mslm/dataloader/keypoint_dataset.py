@@ -57,7 +57,7 @@ def apply_augmentation(keypoint, augmentation_type):
     elif augmentation_type == "Rotation_2D":
         return rotation_2D(keypoint)
     elif augmentation_type == "Horizontal_flip":
-        return horizontal_flip(keypoint)
+        return horizontal_flip(keypoint) #TDB
     elif augmentation_type == "Scaling":
         return scaling(keypoint)
     return keypoint
