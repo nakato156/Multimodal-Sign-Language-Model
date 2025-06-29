@@ -1,6 +1,4 @@
-from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
-from torch.nn.utils import clip_grad_norm_
 
 from accelerate import Accelerator
 import torch
@@ -9,7 +7,6 @@ import random
 torch.manual_seed(23)
 random.seed(23)
 
-from torch import autocast, GradScaler
 from torch.optim import AdamW
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import LambdaLR
@@ -20,7 +17,7 @@ from src.mslm.training import imitator_loss
 import nvtx
 
 class Trainer:
-    def __init__(self, model, train_loader, val_loader, compile=True, **kwargs):
+    def __init__(self, model, train_loader, val_loader, compile=False, **kwargs):
         #Accelerator module
         self.accelerator = Accelerator(mixed_precision="bf16")
         self.device = self.accelerator.device
@@ -43,14 +40,17 @@ class Trainer:
 
         #Loss Function
         if compile:
-            self.criterion = torch.compile(imitator_loss,
-                              dynamic=True
+            self.criterion = torch.compile(
+                imitator_loss,
+                mode="reduce-overhead",
+                dynamic=True
             )            
         else:
             self.criterion = imitator_loss
 
         #Model
         self.model = self.accelerator.prepare_model(model)
+        self.model = model.to(self.accelerator.device)
         self.model = model.to(torch.float32)
 
         #Dataloaders

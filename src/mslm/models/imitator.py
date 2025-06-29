@@ -66,7 +66,6 @@ class Imitator(nn.Module):
         # Proyección final por paso de tiempo
         self.proj = nn.Linear(hidden_size, output_size)
 
-
         self.token_queries = nn.Parameter(torch.randn(max_seq_length, output_size))  # [1, output_size]
         # Queries = E_tokens [n_tokens × B × d], Keys/Values = frames_repr [T' × B × d]
         self.cross_attn = nn.MultiheadAttention(
@@ -85,7 +84,6 @@ class Imitator(nn.Module):
             nn.Linear(output_size * 2, output_size)
         )
 
-    @torch.compile(dynamic=True)
     def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor=None) -> torch.Tensor:
         """
         x: Tensor of frames
