@@ -4,7 +4,7 @@ import random
 torch.manual_seed(23)
 random.seed(23)
 torch.set_default_dtype(torch.float32) 
-torch._dynamo.config.recompile_limit = 64
+#torch._dynamo.config.recompile_limit = 64
 
 from torch.utils.data import DataLoader, random_split
 
@@ -86,12 +86,9 @@ def create_dataloaders(train_dataset, validation_dataset, batch_size, num_worker
 def build_model(input_size, output_size, device, compile=True, **kwargs):
     """Construye, compila y retorna el modelo Imitator."""
     model = Imitator(input_size=input_size, output_size=output_size, **kwargs)
-    model = model.to(torch.float)
-    model = model.to(device)
     if compile:
-        model = torch.compile(model,
-                              dynamic=True,
-                              
+        model = torch.compile(model, 
+                              dynamic=True
         )
     print(model)
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")

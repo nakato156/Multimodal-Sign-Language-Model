@@ -85,20 +85,17 @@ class Imitator(nn.Module):
             nn.Linear(output_size * 2, output_size)
         )
 
+    @torch.compile(dynamic=True)
     def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor=None) -> torch.Tensor:
         """
         x: Tensor of frames
         returns: Tensor of embeddings for each token (128 tokens of frames)
         """
 
-        #def _transformer_block(x):
-        #    return self.transformer(x,src_key_padding_mask=frames_padding_mask)
-
         B, T, D, K = x.shape                # x -> [batch_size, T, input_size]
         x = x.view(B, T,  D * K)            # [B, T, input_size]
         
         x = self.linear_feat(x)             # [B, T, hidden//2]
-        torch._dynamo.mark_dynamic(x, 1)
 
         x = x.transpose(1, 2)               # [B, hidden//2, T]
         # se mantiene T' = T o reducirdo a pool_dim
