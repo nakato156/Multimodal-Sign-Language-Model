@@ -135,7 +135,7 @@ class TransformedSubset(Dataset):
         self.n_keypoints = n_keypoints
         
         if self.transform == "Length_variance":
-            self.video_lengths = [0.8 * video for video in self.video_lengths]
+            self.video_lengths = [int(round(0.8 * video)) for video in self.video_lengths]
 
     def __len__(self):
         return len(self.subset)
@@ -166,7 +166,7 @@ class KeypointDataset(Dataset):
         self.data_augmentation = data_augmentation
     
         self.data_augmentation_dict = {
-            0: "Length_variance",
+        #    0: "Length_variance",
             1: "Gaussian_jitter",
             2: "Rotation_2D",
             3: "Horizontal_flip",
@@ -197,6 +197,8 @@ class KeypointDataset(Dataset):
 
     def split_dataset(self, train_ratio):
         train_dataset, validation_dataset = random_split(self, [train_ratio, 1 - train_ratio], generator=torch.Generator().manual_seed(42))
+        val_length = [self.video_lengths[i] for i in validation_dataset.indices] 
+        
         if self.data_augmentation:
 
             train_length = [self.video_lengths[i] 
@@ -220,11 +222,9 @@ class KeypointDataset(Dataset):
             train_lengths = train_length + trains_subset_length 
             train_dataset = ConcatDataset([train_subset, *aug_subsets])
             
+            self.dataset_length = len(val_length) + len(train_length)
         else:
-            train_lengths = [self.video_lengths[i] for i in train_dataset.indices]
-    
-        val_length = [self.video_lengths[i] for i in validation_dataset.indices] 
-        self.dataset_length = len(val_length) + len(train_length)
+            train_lengths = [self.video_lengths[i] for i in train_dataset.indices]        
 
         print("Videos: ", self.dataset_length)
         return train_dataset, validation_dataset, train_lengths, val_length

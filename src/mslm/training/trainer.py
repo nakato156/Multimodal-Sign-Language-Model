@@ -219,9 +219,17 @@ class Trainer:
     @nvtx.annotate("Train: Train Batch", color="green")
     def _train_batch(self, keypoint, mask_frame, embedding, mask_embedding):
         if not self.prof:
-            with torch.autograd.set_detect_anomaly(True):
-                loss = self._forward_loss(keypoint, mask_frame, embedding, mask_embedding)
-                self.accelerator.backward(loss)
+            try:
+                with torch.autograd.set_detect_anomaly(True):
+                    loss = self._forward_loss(keypoint, mask_frame, embedding, mask_embedding)
+                    self.accelerator.backward(loss)
+            except Exception as e:
+                print(e)
+                print("Keypoint: ", keypoint.shape, "\n", 
+                      "MaskFrame: ", mask_frame.shape, "\n",
+                      "Embedding: ", embedding.shape, "\n",
+                      "Mask Embedding: ", mask_embedding.shape
+                      )
             self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.optimizer.step()
             self.scheduler.step()
