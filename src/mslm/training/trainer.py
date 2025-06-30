@@ -126,7 +126,9 @@ class Trainer:
 
         for epoch in tqdm(range(self.epochs), desc="Entrenando", colour="green"):
             train_loss = self._train_epoch(epoch)
+            torch.cuda.empty_cache()
             val_loss = self._val(epoch)
+            torch.cuda.empty_cache()
 
             if epoch == 1:
                 self.ckpt_mgr.save_model(self.model, epoch)

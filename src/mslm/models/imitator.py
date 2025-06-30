@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from .components.positional_encoding import PositionalEncoding
 from torchvision.ops import stochastic_depth
+from torch.utils.checkpoint import checkpoint
 
 class Imitator(nn.Module):
     def __init__(
@@ -87,6 +88,9 @@ class Imitator(nn.Module):
         x: Tensor of frames
         returns: Tensor of embeddings for each token (128 tokens of frames)
         """
+        
+        def transformer_checkpoint(x):
+            return self.transformer(x, src_key_padding_mask=frames_padding_mask)
 
         B, T, D, K = x.shape                # x -> [batch_size, T, input_size]
         x = x.view(B, T,  D * K)            # [B, T, input_size]
@@ -109,7 +113,10 @@ class Imitator(nn.Module):
         x = self.linear_hidden(x)           # [B, pool_dim, hidden]
 
         x = self.pe(x)
-        x = self.transformer(x, src_key_padding_mask=frames_padding_mask)  # [B, pool_dim, hidden]
+        if self.training:
+            x = checkpoint(transformer_checkpoint, x, use_reentrant=False)
+        else:
+            x = transformer_checkpoint(x)  # [B, pool_dim, hidden]
 
         M = self.proj(x)     # [B, pool_dim, output_size]
         # M = M.masked_fill(frames_padding_mask.unsqueeze(-1), 0.0)
