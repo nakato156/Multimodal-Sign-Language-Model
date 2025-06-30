@@ -49,7 +49,7 @@ class Trainer:
 
         #Loggers
         self.log_interval = kwargs.get("log_interval", 5)
-        self.writer = SummaryWriter(f"../outputs/reports/{datetime.now()}")
+        self.writer = SummaryWriter(f"../outputs/reports/{datetime.now().strftime("%d-%m-%Y-%H-%M-%S")}")
         
         #Save and checkpoint
         self.checkpoint_interval = kwargs.get("checkpoint_interval", 5)
