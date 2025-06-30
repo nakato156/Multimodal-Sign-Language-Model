@@ -32,7 +32,7 @@ from datetime import datetime
 #)
 
 class Trainer:
-    def __init__(self, model, train_loader, val_loader, compile=True, **kwargs):
+    def __init__(self, model, train_loader, val_loader, compile=True, save_tb_model=False, **kwargs):
         dynamo_plugin = TorchDynamoPlugin(
             backend="inductor",  # Options: "inductor", "aot_eager", "aot_nvfuser", etc.
             mode="default",      # Options: "default", "reduce-overhead", "max-autotune"
@@ -49,7 +49,8 @@ class Trainer:
 
         #Loggers
         self.log_interval = kwargs.get("log_interval", 5)
-        self.writer = SummaryWriter(f"../outputs/reports/{datetime.now().strftime("%d-%m-%Y-%H-%M-%S")}")
+        self.save_tb_model = save_tb_model
+        self.writer = SummaryWriter(f"../outputs/reports/{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}")
         
         #Save and checkpoint
         self.checkpoint_interval = kwargs.get("checkpoint_interval", 5)
@@ -212,7 +213,7 @@ class Trainer:
                 torch._dynamo.mark_dynamic(embedding, 1)
                 torch._dynamo.mark_dynamic(mask_embedding, 1)
             
-            if total_loss == 0 and epoch != 0:
+            if self.save_tb_model and (total_loss == 0 and epoch != 0):
                 self.writer.add_graph(self.model, (keypoint, frames_padding_mask))
             
             with self.accelerator.accumulate(self.model):
@@ -225,10 +226,12 @@ class Trainer:
                 if self.distributed.get_rank() == 0:
                     print(f"World-avg train loss: {loss:.4f}")
             else:
-                self.writer.add_scalar("Loss/train", loss, epoch)
                 total_loss += loss
+                
+        final_train_loss = total_loss.item()/len(self.train_loader)
+        self.writer.add_scalar("Loss/train", final_train_loss, epoch)
         if epoch % self.log_interval == 0:
-            tqdm.write(f"\nEpoch: {epoch}.\t Total loss: {total_loss.item()/len(self.train_loader)}")
+            tqdm.write(f"\nEpoch: {epoch}.\t Total loss: {final_train_loss}")
 
         return total_loss
 
