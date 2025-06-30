@@ -1,10 +1,9 @@
+import os
 import torch
 import random
 
 torch.manual_seed(23)
 random.seed(23)
-torch.set_default_dtype(torch.float32) 
-#torch._dynamo.config.recompile_limit = 64
 
 from torch.utils.data import DataLoader, random_split
 
@@ -17,16 +16,6 @@ from src.mslm.utils.paths import path_vars
 #Profilers
 from torch.profiler import profile, ProfilerActivity
 import datetime
-
-import torch._dynamo as dt
-#dt.config.cache_size_limit = 8192
-#dt.config.suppress_errors = True
-
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32   = True
-torch.set_default_dtype(torch.float32)
-
-#torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
 
 def setup_paths():
     """Define y retorna las rutas necesarias para datos y modelos."""
@@ -83,22 +72,16 @@ def create_dataloaders(train_dataset, validation_dataset, batch_size, num_worker
         )
     return train_dataloader, val_dataloader
 
-def build_model(input_size, output_size, device, compile=True, **kwargs):
+def build_model(input_size, output_size, device, **kwargs):
     """Construye, compila y retorna el modelo Imitator."""
     model = Imitator(input_size=input_size, output_size=output_size, **kwargs)
-    if compile:
-        model = torch.compile(
-            model, 
-            mode="reduce-overhead",
-            dynamic=True
-        )
     print(model)
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
     return model
 
-def run_training(params, train_dataloader, val_dataloader, model, profile_model=0):
+def run_training(params, train_dataloader, val_dataloader, model, profile_model=0, compile=True):
     """Configura y ejecuta el entrenamiento."""
-    trainer = Trainer(model, train_dataloader, val_dataloader, **params)
+    trainer = Trainer(model, train_dataloader, val_dataloader, compile=compile, **params)
     trainer.ckpt_mgr.save_params(params)
 
     if profile_model == 1:

@@ -1,12 +1,7 @@
-import os
-#os.environ["TORCH_LOGS"] = "+dynamic, recompiles"
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+from settings import initialize
+initialize()
 import torch
 
-torch._dynamo.config.cache_size_limit = 64
-torch._dynamo.config.dynamic_shapes = True
-torch._dynamo.config.automatic_dynamic_shapes = True
-torch._dynamo.config.assume_static_by_default = True
 import random
 
 torch.manual_seed(23)
@@ -51,8 +46,8 @@ def run(
     tr_ds, val_ds, tr_len, val_len = prepare_datasets(h5_file, train_ratio, key_points)
     tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=6, train_length=tr_len, val_length=val_len)
 
-    model = build_model(**model_parameters, compile=False)
-    run_training(train_config, tr_dl, val_dl, model)
+    model = build_model(**model_parameters)
+    run_training(train_config, tr_dl, val_dl, model, compile=True)
 
 if __name__ == "__main__":
     import argparse

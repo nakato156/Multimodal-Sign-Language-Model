@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from .components.positional_encoding import PositionalEncoding
 from torchvision.ops import stochastic_depth
-import torch._dynamo.config as cfg
 
 class Imitator(nn.Module):
     def __init__(
@@ -16,7 +15,6 @@ class Imitator(nn.Module):
         max_seq_length: int = 301,
     ):
         super().__init__()
-        torch.set_default_dtype(torch.float32)
 
         self.cfg = {
             "input_size": input_size,
@@ -84,7 +82,7 @@ class Imitator(nn.Module):
             nn.Linear(output_size * 2, output_size)
         )
 
-    def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor=None) -> torch.Tensor:
+    def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor) -> torch.Tensor:
         """
         x: Tensor of frames
         returns: Tensor of embeddings for each token (128 tokens of frames)

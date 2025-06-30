@@ -1,5 +1,6 @@
 poethepoet
 torch
+torchvision
 numpy
 openmim
 tensorboard

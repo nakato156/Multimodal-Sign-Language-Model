@@ -166,7 +166,7 @@ class KeypointDataset(Dataset):
         self.data_augmentation = data_augmentation
     
         self.data_augmentation_dict = {
-            0: "Length_variance",
+        #    0: "Length_variance",
             1: "Gaussian_jitter",
             2: "Rotation_2D",
         #    3: "Horizontal_flip",
@@ -230,7 +230,7 @@ class KeypointDataset(Dataset):
         return train_dataset, validation_dataset, train_lengths, val_length
 
     def get_video_lengths(self):
-        return self.video_lengths 
+        return self.dataset_length 
     
     def __len__(self):
         return len(self.valid_index)

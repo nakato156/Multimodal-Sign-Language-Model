@@ -1,6 +1,8 @@
 from tqdm import tqdm
+import os
 
 from accelerate import Accelerator
+from accelerate.utils import TorchDynamoPlugin
 import torch
 import random
 
@@ -15,11 +17,30 @@ from src.mslm.utils.early_stopping import EarlyStopping
 from src.mslm.checkpoint.manager import CheckpointManager
 from src.mslm.training import imitator_loss
 import nvtx
+from datetime import datetime
+
+#print("Prueba de configuraciones",
+#    torch.backends.cuda.matmul.allow_tf32,
+#    torch.backends.cudnn.allow_tf32,
+#    torch._dynamo.config.cache_size_limit,
+#    torch._dynamo.config.dynamic_shapes,
+#    torch._dynamo.config.automatic_dynamic_shapes,
+#    
+#    os.environ.get('DYNAMIC_SHAPE'),
+#    os.environ.get('TORCH_LOGS'),
+#    os.environ.get('PYTORCH_CUDA_ALLOC_CONF')
+#)
 
 class Trainer:
-    def __init__(self, model, train_loader, val_loader, compile=False, **kwargs):
+    def __init__(self, model, train_loader, val_loader, compile=True, **kwargs):
+        dynamo_plugin = TorchDynamoPlugin(
+            backend="inductor",  # Options: "inductor", "aot_eager", "aot_nvfuser", etc.
+            mode="default",      # Options: "default", "reduce-overhead", "max-autotune"
+            dynamic=False
+        )
+        
         #Accelerator module
-        self.accelerator = Accelerator(mixed_precision="bf16")
+        self.accelerator = Accelerator(mixed_precision="bf16", dynamo_plugin=dynamo_plugin)
         self.device = self.accelerator.device
 
         #Hyperparameters
@@ -28,7 +49,7 @@ class Trainer:
 
         #Loggers
         self.log_interval = kwargs.get("log_interval", 5)
-        self.writer = SummaryWriter("../outputs/reports/")
+        self.writer = SummaryWriter(f"../outputs/reports/{datetime.now()}")
         
         #Save and checkpoint
         self.checkpoint_interval = kwargs.get("checkpoint_interval", 5)
@@ -42,7 +63,6 @@ class Trainer:
         if compile:
             self.criterion = torch.compile(
                 imitator_loss,
-                mode="reduce-overhead",
                 dynamic=True
             )            
         else:
@@ -52,7 +72,7 @@ class Trainer:
         self.model = self.accelerator.prepare_model(model)
         self.model = model.to(self.accelerator.device)
         self.model = model.to(torch.float32)
-
+        
         #Dataloaders
         self.train_loader = self.accelerator.prepare_data_loader(train_loader)
         self.val_loader = self.accelerator.prepare_data_loader(val_loader)
@@ -185,10 +205,19 @@ class Trainer:
     def _train_epoch(self, epoch):
         self.model.train()
         total_loss = 0
-        for keypoints, mask_frames, embeddings, mask_embeddings in self.train_loader:
+        for keypoint, frames_padding_mask, embedding, mask_embedding in self.train_loader:
+            if epoch == 0:
+                torch._dynamo.mark_dynamic(keypoint, 1)
+                torch._dynamo.mark_dynamic(frames_padding_mask, 1)
+                torch._dynamo.mark_dynamic(embedding, 1)
+                torch._dynamo.mark_dynamic(mask_embedding, 1)
+            
+            if total_loss == 0 and epoch != 0:
+                self.writer.add_graph(self.model, (keypoint, frames_padding_mask))
+            
             with self.accelerator.accumulate(self.model):
                 self.optimizer.zero_grad(set_to_none=True)        
-                loss = self._train_batch(keypoints, mask_frames, embeddings, mask_embeddings)
+                loss = self._train_batch(keypoint, frames_padding_mask, embedding, mask_embedding)
             if self.distributed is not None:
                 loss_tensor = loss.to(self.device)
                 self.distributed.all_reduce(loss_tensor, op=self.distributed.ReduceOp.SUM)
@@ -203,31 +232,26 @@ class Trainer:
 
         return total_loss
 
-    def _forward_loss(self, keypoint, mask_frame, embedding, mask_embedding):
-        torch._dynamo.mark_dynamic(keypoint, 1)
-        torch._dynamo.mark_dynamic(mask_frame, 1)
-        torch._dynamo.mark_dynamic(embedding, 1)
-        torch._dynamo.mark_dynamic(mask_embedding, 1)
-        
+    def _forward_loss(self, keypoint, frames_padding_mask, embedding, mask_embedding):
         with self.accelerator.autocast():
             keypoint = keypoint.to(torch.float32)
             embedding = embedding.to(torch.float32)
 
-            output = self.model(keypoint, mask_frame)
+            output = self.model(keypoint, frames_padding_mask)
             loss = self.criterion(output, embedding, mask_embedding)
         return loss           
 
     @nvtx.annotate("Train: Train Batch", color="green")
-    def _train_batch(self, keypoint, mask_frame, embedding, mask_embedding):
+    def _train_batch(self, keypoint, frames_padding_mask, embedding, mask_embedding):
         if not self.prof:
             try:
                 with torch.autograd.set_detect_anomaly(True):
-                    loss = self._forward_loss(keypoint, mask_frame, embedding, mask_embedding)
+                    loss = self._forward_loss(keypoint, frames_padding_mask, embedding, mask_embedding)
                     self.accelerator.backward(loss)
             except Exception as e:
                 print(e)
                 print("Keypoint: ", keypoint.shape, "\n", 
-                      "MaskFrame: ", mask_frame.shape, "\n",
+                      "MaskFrame: ", frames_padding_mask.shape, "\n",
                       "Embedding: ", embedding.shape, "\n",
                       "Mask Embedding: ", mask_embedding.shape
                       )
@@ -236,7 +260,7 @@ class Trainer:
         else:
             with torch.autograd.set_detect_anomaly(True):
                 with nvtx.annotate("Forward Pass", color="blue"):
-                    loss = self._forward_loss(keypoint, mask_frame, embedding, mask_embedding)
+                    loss = self._forward_loss(keypoint, frames_padding_mask, embedding, mask_embedding)
                 with nvtx.annotate("Backward Pass", color="blue"):
                         self.accelerator.backward(loss)
             with nvtx.annotate("Update", color="blue"):    
@@ -248,8 +272,14 @@ class Trainer:
     def _val(self, epoch):
         self.model.eval()
         val_loss=0
-        for keypoints, mask_frames, embeddings, mask_embeddings in self.val_loader:        
-            loss = self._val_batch(keypoints, mask_frames, embeddings, mask_embeddings)
+        for keypoint, frames_padding_mask, embedding, mask_embedding in self.val_loader:        
+            if epoch == 0:
+                torch._dynamo.mark_dynamic(keypoint, 1)
+                torch._dynamo.mark_dynamic(frames_padding_mask, 1)
+                torch._dynamo.mark_dynamic(embedding, 1)
+                torch._dynamo.mark_dynamic(mask_embedding, 1)
+            
+            loss = self._val_batch(keypoint, frames_padding_mask, embedding, mask_embedding)
             if self.distributed is not None:
                 loss_tensor = loss.to(self.device)
                 self.distributed.all_reduce(loss_tensor, op=self.distributed.ReduceOp.SUM)
@@ -268,10 +298,10 @@ class Trainer:
         return final_val_loss
 
     @nvtx.annotate("Val: Validate Batch", color="green")
-    def _val_batch(self, keypoint, mask_frame, embedding, mask_embedding):
+    def _val_batch(self, keypoint, frames_padding_mask, embedding, mask_embedding):
         if not self.prof:
-            loss = self._forward_loss(keypoint, mask_frame, embedding, mask_embedding)
+            loss = self._forward_loss(keypoint, frames_padding_mask, embedding, mask_embedding)
         else:
             with nvtx.annotate("Val: Forward + Loss", color="blue"):
-                loss = self._forward_loss(keypoint, mask_frame, embedding, mask_embedding)
+                loss = self._forward_loss(keypoint, frames_padding_mask, embedding, mask_embedding)
         return loss
