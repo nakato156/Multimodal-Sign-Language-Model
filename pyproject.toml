@@ -9,6 +9,7 @@ description = "Multi-Stage Learning Model for Sign Language"
 authors = [
   { name = "Christian Velasquez" },
   { name = "Giorgio Mancusi" },
+  { name = "Rody Vilchez" },
 ]
 requires-python = ">=3.11.11"
 dependencies = [
