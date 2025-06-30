@@ -123,7 +123,7 @@ def normalize_augment_data(keypoint, augmentation_type, n_keypoints = 245):
     # Keypoint Normalization
     keypoint = keypoint_normalization(keypoint)
 
-    keypoint.to(torch.float32)
+    keypoint = keypoint.to(torch.float32)
     return keypoint
 
 class TransformedSubset(Dataset):
@@ -148,7 +148,7 @@ class TransformedSubset(Dataset):
         if not isinstance(embedding, torch.Tensor):
             embedding = torch.as_tensor(embedding, dtype=torch.float32)
     
-        embedding.to(torch.float32)
+        embedding = embedding.to(torch.float32)
 
         if self.return_label:
             return keypoint, embedding, label
@@ -249,7 +249,7 @@ class KeypointDataset(Dataset):
         if not isinstance(embedding, torch.Tensor):
             embedding = torch.as_tensor(embedding, dtype=torch.float32)
     
-        embedding.to(torch.float32)
+        embedding = embedding.to(torch.float32)
 
         if self.return_label:
             return keypoint, embedding, label
