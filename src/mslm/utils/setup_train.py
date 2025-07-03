@@ -79,9 +79,9 @@ def build_model(input_size, output_size, device, **kwargs):
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
     return model
 
-def run_training(params, train_dataloader, val_dataloader, model, profile_model=0, compile=True):
+def run_training(params, train_dataloader, val_dataloader, model, profile_model=0, compile=True, batch_sampling=True):
     """Configura y ejecuta el entrenamiento."""
-    trainer = Trainer(model, train_dataloader, val_dataloader, compile=compile, **params)
+    trainer = Trainer(model, train_dataloader, val_dataloader, compile=compile, batch_sampling=batch_sampling, **params)
     trainer.ckpt_mgr.save_params(params)
 
     if profile_model == 1:

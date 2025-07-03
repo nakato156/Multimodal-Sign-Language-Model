@@ -13,6 +13,7 @@ from src.mslm.studies import complete_objective
 from src.mslm.utils import ConfigLoader
 
 def run(
+    epochs: int = 15,
     n_trials: int = 10,
     batch_size: int = 32,
     train_ratio: float = 0.8,
@@ -25,7 +26,7 @@ def run(
     model_parameters = ConfigLoader("config/model/config.toml").load_config()
     model_parameters.update({
         "device": device if model_parameters.get("device") == "auto" else model_parameters.get("device", device),
-        "input_size": 250 * 2,
+        "input_size": 133 * 2,
         "output_size": 3072,
     })
 
@@ -33,7 +34,7 @@ def run(
     train_config = ConfigLoader("config/training/train_config.toml").load_config()
     train_ratio = train_config.get("train_ratio", train_ratio)
     train_config.update({
-        "epochs": train_config.get("epochs", 8),
+        "epochs": epochs if epochs else train_config.get("epochs", 100),
         "batch_size": batch_size if batch_size else train_config.get("batch_size", 32),
         "checkpoint_interval": train_config.get("checkpoint_interval", 5),
         "log_interval": train_config.get("log_interval", 2),
@@ -42,10 +43,9 @@ def run(
         "device": device if model_parameters.get("device") == "auto" else model_parameters.get("device", device),
     })
 
-
     # datasets
-    tr_ds, val_ds, tr_len, val_len = prepare_datasets(h5_file, train_ratio, n_keypoints=230)
-    tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=4, train_length=tr_len, val_length=val_len)
+    tr_ds, val_ds, tr_len, val_len = prepare_datasets(h5_file, train_ratio, 133)
+    tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=6, train_length=tr_len, val_length=val_len)
 
     print("Batch Size: ", train_config["batch_size"])
     # optuna
@@ -71,10 +71,11 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Train a model.")
+    parser.add_argument("--epochs", type=int, default=100, help="Number of epochs to train.")
     parser.add_argument("--n_trials", type=int, default=8, help="Number of trials to run.")
     parser.add_argument("--batch_size", type=int, default=16, help="Batch size for training.")
     parser.add_argument("--train_ratio", type=float, default=0.8, help="Ratio of training data.")
     args = parser.parse_args()
 
     print(f"Running study with {args.n_trials} trials, batch size {args.batch_size}, train ratio {args.train_ratio}")
-    run(args.n_trials, args.batch_size, args.train_ratio)
+    run(args.epochs, args.n_trials, args.batch_size, args.train_ratio)
