@@ -17,7 +17,7 @@ dt*
 
 nk_*
 *.pickle
-**/test.ipynb
+**/test_code*
 dt*
 
 # macOS system files
