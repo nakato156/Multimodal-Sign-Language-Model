@@ -44,7 +44,7 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
         max_seq_length=301
     )
 
-    trainer = Trainer(model, train_dataloader, val_dataloader, compile=True, **train_config)
+    trainer = Trainer(model, train_dataloader, val_dataloader, compile=compile, batch_sampling=True, **train_config)
 
     trainer.optimizer = AdamW(
         trainer.model.parameters(), 

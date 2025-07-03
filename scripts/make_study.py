@@ -17,11 +17,14 @@ def run(
     n_trials: int = 10,
     batch_size: int = 32,
     train_ratio: float = 0.8,
+    batch_sampling: bool = True
 ):
     # setup
     _, _, h5_file = setup_paths()
         
     device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    sub_batch_sample = 2
 
     model_parameters = ConfigLoader("config/model/config.toml").load_config()
     model_parameters.update({
@@ -36,12 +39,19 @@ def run(
     train_config.update({
         "epochs": epochs if epochs else train_config.get("epochs", 100),
         "batch_size": batch_size if batch_size else train_config.get("batch_size", 32),
+        "sub_batch_size": sub_batch_sample if sub_batch_sample else train_config.get("sub_batch_size", 2),
         "checkpoint_interval": train_config.get("checkpoint_interval", 5),
         "log_interval": train_config.get("log_interval", 2),
         "train_ratio": train_ratio,
         "validation_ratio": round(1 - train_ratio, 2),
         "device": device if model_parameters.get("device") == "auto" else model_parameters.get("device", device),
     })
+
+    if batch_sampling:
+        if batch_size%sub_batch_sample != 0 or batch_size < sub_batch_sample:
+            raise ValueError(f"The sub_batch {sub_batch_sample} needs to be divisible the batch size {batch_size}")
+
+    print(f"Running study with batch size {batch_size}, sub batch size {sub_batch_sample}")
 
     # datasets
     tr_ds, val_ds, tr_len, val_len = prepare_datasets(h5_file, train_ratio, 133)
@@ -75,7 +85,8 @@ if __name__ == "__main__":
     parser.add_argument("--n_trials", type=int, default=8, help="Number of trials to run.")
     parser.add_argument("--batch_size", type=int, default=16, help="Batch size for training.")
     parser.add_argument("--train_ratio", type=float, default=0.8, help="Ratio of training data.")
+    parser.add_argument("--batch_sampling", type=bool, default=False, help="Enables batch sampling for training.")
     args = parser.parse_args()
 
     print(f"Running study with {args.n_trials} trials, batch size {args.batch_size}, train ratio {args.train_ratio}")
-    run(args.epochs, args.n_trials, args.batch_size, args.train_ratio)
+    run(args.epochs, args.n_trials, args.batch_size, args.train_ratio, args.batch_sampling)

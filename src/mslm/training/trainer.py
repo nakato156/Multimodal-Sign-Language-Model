@@ -193,7 +193,6 @@ class Trainer:
             if epoch % self.log_interval == 0:
                 tqdm.write(f"\nEpoch: {epoch}.\t Total loss: {train_loss/len(self.train_loader)}")
 
-            #torch.cuda.empty_cache()
         return train_loss, val_loss
 
     @nvtx.annotate("Train: Train Epoch", color="green")
@@ -223,7 +222,6 @@ class Trainer:
         if epoch % self.log_interval == 0:
             tqdm.write(f"\nEpoch: {epoch}.\t Total loss: {final_train_loss}")
 
-        #gc.collect()
         return total_loss
 
     def _forward_loss(self, keypoint, frames_padding_mask, embedding, mask_embedding):
@@ -249,8 +247,6 @@ class Trainer:
                     if self.batch_sampling:
                         start = i * self.sub_batch
                         end = min(start + self.sub_batch, batch_size)
-                    if end - start != 0 and end - start < self.sub_batch:
-                        continue                 
                     try:
                         loss = self._forward_loss(keypoint[start:end], 
                                                 frames_padding_mask[start:end], 
@@ -340,8 +336,6 @@ class Trainer:
                     if self.batch_sampling:
                         start = i * self.sub_batch
                         end = min(start + self.sub_batch, self.batch_size)                
-                    if end - start != 0 and end - start < self.sub_batch:
-                        continue                 
                     with nvtx.annotate("Forward Pass", color="blue"):
                         loss = self._forward_loss(keypoint[start:end], 
                                                 frames_padding_mask[start:end], 
