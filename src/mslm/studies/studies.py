@@ -3,6 +3,7 @@ from ..models import Imitator
 from optuna.exceptions import TrialPruned
 import torch
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import LambdaLR
 from tqdm import trange
 
 def lr_objetive(trial, train_dataloader, val_dataloader, **params):
@@ -42,12 +43,8 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
         n_layers=n_layers,
         max_seq_length=301
     )
-    model = torch.compile(model, 
-                            backend="inductor",
-                            dynamic=True
-    ).to(model_params["device"])
 
-    trainer = Trainer(model, train_dataloader, val_dataloader, **train_config)
+    trainer = Trainer(model, train_dataloader, val_dataloader, compile=True, **train_config)
 
     trainer.optimizer = AdamW(
         trainer.model.parameters(), 
@@ -55,19 +52,25 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
         weight_decay=1e-3,
         foreach=True
     )
-    trainer.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        trainer.optimizer, 
-        mode="min", 
-        factor=0.5, 
-        patience=2, 
-        min_lr=1e-7
-    )
+
+    def linear_warmup_cosine_decay(current_step, warmup_steps, total_steps):
+        if current_step < warmup_steps:
+            return float(current_step) / float(max(1, warmup_steps))
+        return 0.5 * (1.0 + torch.cos(
+            torch.tensor((current_step - warmup_steps) / (total_steps - warmup_steps) * 3.1415926535))
+        ).item()
+
+    warmup_steps = 5 * len(trainer.train_loader)  # p.ej. 5 epochs de warm-up
+    total_steps = trainer.epochs * len(trainer.train_loader)
+
+    lr_lambda = lambda step: linear_warmup_cosine_decay(step, warmup_steps, total_steps)
+    trainer.scheduler = LambdaLR(trainer.optimizer, lr_lambda=lr_lambda)
     trainer.prepare_optimizer_scheduler()
 
     for epoch in trange(trainer.epochs, desc="Epochs"):
-        _ = trainer._train_epoch(epoch)
+        train_loss = trainer._train_epoch(epoch)
         val_loss   = trainer._val(epoch)
-        trainer.scheduler.step(val_loss)
+        trainer.scheduler.step()
 
         # Reportar y podar
         trial.report(val_loss, step=epoch)
