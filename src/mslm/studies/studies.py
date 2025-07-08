@@ -7,6 +7,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from tqdm import trange
 import torch._dynamo
 import gc
+from src.mslm.utils.early_stopping import EarlyStopping
 
 def lr_objetive(trial, train_dataloader, val_dataloader, **params):
     learning_rate = trial.suggest_float("lr", 1e-5, 1e-1, log=True)
@@ -35,6 +36,8 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
     learning_rate = trial.suggest_float("lr", 1e-4, 1e-3, log=True)
     print(f"Hidden Size: {hidden_size}, Nhead: {nhead}, FF Dim: {ff_dim}, N Layers: {n_layers}, Learning Rate: {learning_rate}")
     train_config["learning_rate"] = learning_rate
+
+    early_stopping = EarlyStopping(patience=100)
 
     model = Imitator(
         input_size=model_params["input_size"],

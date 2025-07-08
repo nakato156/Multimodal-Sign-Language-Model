@@ -241,7 +241,6 @@ class Trainer:
         n_sub_batch = 0
         if self.batch_sampling:
             n_sub_batch = (batch_size + self.sub_batch - 1) // self.sub_batch
-        
         if not self.prof:
             with torch.autograd.set_detect_anomaly(True):
                 for i in range(n_sub_batch):
@@ -253,6 +252,8 @@ class Trainer:
                                                 frames_padding_mask[start:end], 
                                                 embedding[start:end], 
                                                 mask_embedding[start:end])
+                        if self.batch_sampling:
+                            loss = loss/(n_sub_batch)
                         self.accelerator.backward(loss)
                         batch_loss += loss.detach()
                     except Exception as e:
