@@ -238,6 +238,7 @@ class Trainer:
         batch_size = keypoint.size(0)
         start = 0
         end = keypoint.size(0)
+        n_sub_batch = 0
         if self.batch_sampling:
             n_sub_batch = (batch_size + self.sub_batch - 1) // self.sub_batch
         
@@ -284,7 +285,9 @@ class Trainer:
             with nvtx.annotate("Update", color="blue"):    
                 self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.optimizer.step()
-        return batch_loss
+
+
+        return batch_loss / (n_sub_batch + 1)
 
     @nvtx.annotate("Validation Section", color="green")
     def _val(self, epoch):

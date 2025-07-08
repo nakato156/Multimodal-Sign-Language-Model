@@ -5,6 +5,8 @@ import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import trange
+import torch._dynamo
+import gc
 
 def lr_objetive(trial, train_dataloader, val_dataloader, **params):
     learning_rate = trial.suggest_float("lr", 1e-5, 1e-1, log=True)
@@ -26,11 +28,11 @@ def lr_objetive(trial, train_dataloader, val_dataloader, **params):
     return val_loss
 
 def complete_objective(trial, train_dataloader, val_dataloader, model_params, train_config):
-    hidden_size   = trial.suggest_categorical("hidden_size", [512, 1024, 2048])
-    nhead         = trial.suggest_categorical("nhead",       [4, 8, 16, 32])
+    hidden_size   = trial.suggest_categorical("hidden_size", [1024, 2048])
+    nhead         = trial.suggest_categorical("nhead",       [8, 16, 32])
     ff_dim        = trial.suggest_int("ff_dim", 1024, 3072, step=256)
-    n_layers      = trial.suggest_categorical("n_layers",    [2, 4, 6, 8, 10, 12])
-    learning_rate = trial.suggest_float("lr", 5e-5, 1e-3, log=True)
+    n_layers      = trial.suggest_categorical("n_layers",    [10, 12])
+    learning_rate = trial.suggest_float("lr", 1e-4, 1e-3, log=True)
     print(f"Hidden Size: {hidden_size}, Nhead: {nhead}, FF Dim: {ff_dim}, N Layers: {n_layers}, Learning Rate: {learning_rate}")
     train_config["learning_rate"] = learning_rate
 
@@ -44,7 +46,7 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
         max_seq_length=301
     )
 
-    trainer = Trainer(model, train_dataloader, val_dataloader, compile=compile, batch_sampling=True, **train_config)
+    trainer = Trainer(model, train_dataloader, val_dataloader, compile=compile, batch_sampling=True, save_tb_model=False, **train_config)
 
     trainer.optimizer = AdamW(
         trainer.model.parameters(), 
@@ -71,6 +73,7 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
         train_loss = trainer._train_epoch(epoch)
         val_loss   = trainer._val(epoch)
         trainer.scheduler.step()
+        torch.cuda.empty_cache()
 
         # Reportar y podar
         trial.report(val_loss, step=epoch)
@@ -81,5 +84,11 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
         if trainer.early_stopping.stop:
             break
     
+    torch._dynamo.reset()
+    try:
+        del model, trainer
+    except NameError:
+        pass
+    gc.collect()
     torch.cuda.empty_cache()
     return val_loss
