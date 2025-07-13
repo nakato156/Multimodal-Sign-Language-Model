@@ -3,4 +3,4 @@
 SESSION_NAME="poe_training"
 LOGFILE="./train.log"
 
-tmux new-session -d -s "$SESSION_NAME" "poe train --batch_size 4 | tee $LOGFILE"
+tmux new-session -d -s "$SESSION_NAME" "poe train --batch_size 2 | tee $LOGFILE"
