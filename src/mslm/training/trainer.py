@@ -252,8 +252,7 @@ class Trainer:
                                                 frames_padding_mask[start:end], 
                                                 embedding[start:end], 
                                                 mask_embedding[start:end])
-                        if self.batch_sampling:
-                            loss = loss/(n_sub_batch)
+                        loss  = loss / n_sub_batch if self.batch_sampling else loss
                         self.accelerator.backward(loss)
                         batch_loss += loss.detach()
                     except Exception as e:
@@ -267,28 +266,35 @@ class Trainer:
             self.optimizer.step()
         else:
             with nvtx.annotate("Sub_batch", color="blue"):
-                    with torch.autograd.set_detect_anomaly(True):
-                        for i in range(n_sub_batch):
-                            if self.batch_sampling:
-                                start = i * self.sub_batch
-                                end = min(start + self.sub_batch, self.batch_size)                
-                            if end - start != 0 and end - start < self.sub_batch:
-                                continue                 
-                            with nvtx.annotate("Forward Pass", color="blue"):
+                with torch.autograd.set_detect_anomaly(True):
+                    for i in range(n_sub_batch):
+                        if self.batch_sampling:
+                            start = i * self.sub_batch
+                            end = min(start + self.sub_batch, batch_size)
+                        with nvtx.annotate("Forward Pass", color="blue"):
+                            try:
                                 loss = self._forward_loss(keypoint[start:end], 
                                                         frames_padding_mask[start:end], 
                                                         embedding[start:end], 
                                                         mask_embedding[start:end])
-                            with nvtx.annotate("Backward Pass", color="blue"):
+                                loss  = loss / n_sub_batch if self.batch_sampling else loss
                                 self.accelerator.backward(loss)
-                            batch_loss += loss.detach()
+                                batch_loss += loss
+                            except Exception as e:
+                                print("Error: ", e)
+                                print("Keypoints: ", keypoint[start:end])
+                                print("Frames Padding Mask: ", frames_padding_mask[start:end])
+                                print("Embedding: ", embedding[start:end])
+                                print("Mask Embedding: ", mask_embedding[start:end])
+
+                self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                self.optimizer.step()
 
             with nvtx.annotate("Update", color="blue"):    
                 self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.optimizer.step()
 
-
-        return batch_loss / (n_sub_batch + 1)
+        return batch_loss
 
     @nvtx.annotate("Validation Section", color="green")
     def _val(self, epoch):
@@ -323,28 +329,32 @@ class Trainer:
             n_sub_batch = (batch_size + self.sub_batch - 1) // self.sub_batch
 
         if not self.prof:
+            with torch.inference_mode():
                 for i in range(n_sub_batch):
                     if self.batch_sampling:
                         start = i * self.sub_batch
                         end = min(start + self.sub_batch, batch_size)
                     if end - start != 0 and end - start < self.sub_batch:
                         continue                 
-                loss = self._forward_loss(keypoint[start:end], 
-                                        frames_padding_mask[start:end], 
-                                        embedding[start:end], 
-                                        mask_embedding[start:end])
-                batch_loss += loss.detach()
+                    loss = self._forward_loss(keypoint[start:end], 
+                                            frames_padding_mask[start:end], 
+                                            embedding[start:end], 
+                                            mask_embedding[start:end])
+                    loss  = loss / n_sub_batch if self.batch_sampling else loss
+                    batch_loss += loss.detach()
         else:
             with nvtx.annotate("Val: Forward + Loss", color="blue"):
-                for i in range(n_sub_batch):
-                    if self.batch_sampling:
-                        start = i * self.sub_batch
-                        end = min(start + self.sub_batch, self.batch_size)                
-                    with nvtx.annotate("Forward Pass", color="blue"):
-                        loss = self._forward_loss(keypoint[start:end], 
-                                                frames_padding_mask[start:end], 
-                                                embedding[start:end], 
-                                                mask_embedding[start:end])
-                    batch_loss += loss.detach()
+                with torch.inference_mode():
+                    for i in range(n_sub_batch):
+                        if self.batch_sampling:
+                            start = i * self.sub_batch
+                            end = min(start + self.sub_batch, self.batch_size)                
+                        with nvtx.annotate("Forward Pass", color="blue"):
+                            loss = self._forward_loss(keypoint[start:end], 
+                                                    frames_padding_mask[start:end], 
+                                                    embedding[start:end], 
+                                                    mask_embedding[start:end])
+                            loss  = loss / n_sub_batch if self.batch_sampling else loss
+                        batch_loss += loss.detach()
 
         return batch_loss    

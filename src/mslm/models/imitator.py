@@ -1,8 +1,14 @@
 import torch
 import torch.nn as nn
-from .components.positional_encoding import PositionalEncoding
 from torchvision.ops import stochastic_depth
 from torch.utils.checkpoint import checkpoint
+
+from .components.positional_encoding import PositionalEncoding
+
+#from apex.normalization import FusedLayerNorm
+#from apex.contrib.multihead_attn import FlashMultiheadAttention
+#
+#from xformers.ops import memory_efficient_attention as FlashAttention
 
 class Imitator(nn.Module):
     def __init__(
@@ -74,6 +80,13 @@ class Imitator(nn.Module):
             batch_first=True,
         )
 
+        #self.cross_attn = FlashAttention(
+        #    embed_dim=output_size,
+        #    num_heads=nhead,
+        #    dropout=0.1,
+        #    batch_first=True
+        #)
+
         self.norm_attn = nn.LayerNorm(output_size)
 
         self.proj_final = nn.Sequential(
@@ -83,14 +96,14 @@ class Imitator(nn.Module):
             nn.Linear(output_size * 2, output_size)
         )
 
+    def transformer_checkpoint(self, x, mask):
+        return self.transformer(x, src_key_padding_mask=mask)
+
     def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor) -> torch.Tensor:
         """
         x: Tensor of frames
         returns: Tensor of embeddings for each token (128 tokens of frames)
         """
-        
-        def transformer_checkpoint(x):
-            return self.transformer(x, src_key_padding_mask=frames_padding_mask)
 
         B, T, D, K = x.shape                # x -> [batch_size, T, input_size]
         x = x.view(B, T,  D * K)            # [B, T, input_size]
@@ -105,7 +118,7 @@ class Imitator(nn.Module):
         x = self.act1(x)                    # [B, pool_dim, hidden//2]
         x = x.transpose(1, 2)               # [B, hidden//2, pool_dim]
 
-        x = self.conv2(x)                  # [B, hidden//2, pool_dim]
+        x = self.conv2(x)                   # [B, hidden//2, pool_dim]
         x = x.transpose(1, 2)               # [B, pool_dim, hidden//2]
         x = self.ln2(x)                     # [B, pool_dim, hidden//2]
         x = self.act2(x)                    # [B, pool_dim, hidden//2]
@@ -114,9 +127,9 @@ class Imitator(nn.Module):
 
         x = self.pe(x)
         if self.training:
-            x = checkpoint(transformer_checkpoint, x, use_reentrant=False)
+            x = checkpoint(self.transformer_checkpoint, x, frames_padding_mask, use_reentrant=False)
         else:
-            x = transformer_checkpoint(x)  # [B, pool_dim, hidden]
+            x = self.transformer_checkpoint(x, frames_padding_mask)  # [B, pool_dim, hidden]
 
         M = self.proj(x)     # [B, pool_dim, output_size]
         # M = M.masked_fill(frames_padding_mask.unsqueeze(-1), 0.0)

@@ -14,3 +14,4 @@ onnxruntime-gpu
 onnxscript
 accelerate
 transformers
+xformers

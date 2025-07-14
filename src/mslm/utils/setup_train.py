@@ -81,7 +81,7 @@ def build_model(input_size, output_size, device, **kwargs):
 
 def run_training(params, train_dataloader, val_dataloader, model, profile_model=0, compile=True, batch_sampling=True):
     """Configura y ejecuta el entrenamiento."""
-    trainer = Trainer(model, train_dataloader, val_dataloader, compile=compile, batch_sampling=batch_sampling, **params)
+    trainer = Trainer(model, train_dataloader, val_dataloader, compile=compile, batch_sampling=batch_sampling, save_tb_model=False, **params)
     trainer.ckpt_mgr.save_params(params)
 
     if profile_model == 1:
@@ -103,7 +103,7 @@ def run_training(params, train_dataloader, val_dataloader, model, profile_model=
 
 def run_dt_training(params, train_dataloader, val_dataloader, model, rank, channel, dist, stub):
     """Configura y ejecuta el entrenamiento."""
-    trainer = Trainer(model, train_dataloader, val_dataloader, **params)
+    trainer = Trainer(model, train_dataloader, val_dataloader, save_tb_model=False,**params)
     trainer.ckpt_mgr.save_params(params)
 
     print("Starting training...")

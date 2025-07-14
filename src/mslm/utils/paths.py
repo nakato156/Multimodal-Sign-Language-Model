@@ -50,5 +50,6 @@ class PathVariables:
         self.h5_file = dp / "dataset.hdf5"
         #self.h5_file = dp / "dataset_clean_clean.hdf5"
         self.h5_file = dp / "dataset_small_clean25.hdf5"
+        self.h5_file = dp / "dataset_small5_clean.hdf5"
 
 path_vars = PathVariables()
