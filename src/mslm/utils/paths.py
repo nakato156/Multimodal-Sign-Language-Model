@@ -48,6 +48,7 @@ class PathVariables:
         dp = bp.parent / "data"
         self.data_path = dp
         self.h5_file = dp / "dataset.hdf5"
-        #self.h5_file = "/home/giorgio6846/Code/Sign-AI/data/dataset.hdf5"
+        #self.h5_file = dp / "dataset_clean_clean.hdf5"
+        self.h5_file = dp / "dataset_small_clean25.hdf5"
 
 path_vars = PathVariables()

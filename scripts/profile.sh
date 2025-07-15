@@ -21,7 +21,7 @@ nsys profile \
     --gpu-metrics-set=ad10x \
     --gpu-metrics-frequency=10000 \
     --enable=nvml_metrics,-i100 \
-    poe profile_nvidia
+    poe profile_nvidia --epochs 1 --batch_size 2
     
 #ncu \
 #    --target-processes all \

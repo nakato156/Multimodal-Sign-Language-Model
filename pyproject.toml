@@ -9,6 +9,7 @@ description = "Multi-Stage Learning Model for Sign Language"
 authors = [
   { name = "Christian Velasquez" },
   { name = "Giorgio Mancusi" },
+  { name = "Rody Vilchez" },
 ]
 requires-python = ">=3.11.11"
 dependencies = [
@@ -30,7 +31,7 @@ dev = [
 [tool.poe.tasks]
 # Definimos cada tarea con su propio bloque para pasar PYTHONPATH
 [tool.poe.tasks.train]
-cmd = "python scripts/train.py --epochs 100 --batch_size 8"
+cmd = "python scripts/train.py --epochs 100 --batch_size 32"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.finetune]
@@ -38,7 +39,7 @@ cmd = "python scripts/finetuning.py --epochs 10"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.study]
-cmd = "python scripts/make_study.py --n_trials 30 --batch_size 4"
+cmd = "python scripts/make_study.py --n_trials 60 --batch_size 16 --epochs 15"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.embed]
@@ -54,7 +55,7 @@ cmd = "python scripts/train_profile.py --epochs 4 --batch_size 4 --profile_pytor
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.grpc_server]
-cmd = "python scripts/node_data.py --epochs 100 --batch_size 32"
+cmd = "python scripts/node_data.py --epochs 10 --batch_size 32"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.worker]

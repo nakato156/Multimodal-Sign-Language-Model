@@ -6,7 +6,7 @@ import torch.utils.checkpoint as checkpoint
 class Imitator(nn.Module):
     def __init__(
         self,
-        input_size: int = 250*2,
+        input_size: int = 133*2,
         hidden_size: int = 512,
         output_size: int = 3072,
         nhead: int = 8,
@@ -15,7 +15,7 @@ class Imitator(nn.Module):
         max_seq_length: int = 301,
     ):
         super().__init__()
-        
+
         self.cfg = {
             "input_size": input_size,
             "hidden_size": hidden_size,
@@ -55,7 +55,7 @@ class Imitator(nn.Module):
             nhead=nhead,
             dim_feedforward=ff_dim,
             batch_first=True,
-            dropout=0.2,
+            dropout=0.4,
             norm_first=True
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
@@ -81,15 +81,14 @@ class Imitator(nn.Module):
             nn.Linear(output_size * 2, output_size)
         )
 
-    @torch.compile(dynamic=True)
-    def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor=None) -> torch.Tensor:
+    def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor) -> torch.Tensor:
         """
         x: Tensor of frames
         returns: Tensor of embeddings for each token (128 tokens of frames)
         """
-
-        def transformer_block(x):
-            return self.transformer(x,src_key_padding_mask=frames_padding_mask)
+        
+        def transformer_checkpoint(x):
+            return self.transformer(x, src_key_padding_mask=frames_padding_mask)
 
         B, T, D, K = x.shape                # x -> [batch_size, T, input_size]
         x = x.view(B, T,  D * K)            # [B, T, input_size]
@@ -112,21 +111,15 @@ class Imitator(nn.Module):
         x = self.linear_hidden(x)           # [B, pool_dim, hidden]
 
         if self.training:
-            x = checkpoint.checkpoint(
-                transformer_block, 
-                x,
-                use_reentrant=True
-            )                               # [B, pool_dim, hidden]
+            x = checkpoint(transformer_checkpoint, x, use_reentrant=False)
         else:
-            x = self.transformer(x, src_key_padding_mask=frames_padding_mask)
+            x = transformer_checkpoint(x)  # [B, pool_dim, hidden]
 
-        M = self.proj(x).contiguous()        # [B, pool_dim, output_size]
+        M = self.proj(x)     # [B, pool_dim, output_size]
+        # M = M.masked_fill(frames_padding_mask.unsqueeze(-1), 0.0)
         
-        Q = self.token_queries.unsqueeze(0).expand(B, -1, -1).contiguous()   # [B, n_tokens, output_size]
-        
-        if frames_padding_mask is not None:
-            frames_padding_mask = frames_padding_mask.contiguous()
-
+        Q = self.token_queries.unsqueeze(0).expand(B, -1, -1)   # [B, n_tokens, output_size]
+    
         attn_out, attn_w = self.cross_attn(
             query=Q,
             key=M,
@@ -135,5 +128,5 @@ class Imitator(nn.Module):
         )  # [B, n_tokens, output_size]
         x = self.norm_attn(Q + attn_out)
         # print(f"Attention output shape: {attn_out.shape}, Q shape: {Q.shape}, M shape: {M.shape}")
-        x = x + self.proj_final(attn_out)        # [B, n_tokens, output_size]
+        #x = x + stochastic_depth(self.proj_final(attn_out), p=0.2, mode="row")        # [B, n_tokens, output_size]
         return x
