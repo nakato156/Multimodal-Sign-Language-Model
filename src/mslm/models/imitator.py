@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
-from .components.positional_encoding import PositionalEncoding
-from torchvision.ops import stochastic_depth
-from torch.utils.checkpoint import checkpoint
+from .components import TransformerEncoderLayerRoPE
+import torch.utils.checkpoint as checkpoint
 
 class Imitator(nn.Module):
     def __init__(
@@ -51,8 +50,7 @@ class Imitator(nn.Module):
         self.linear_hidden = nn.Linear(pool_dim, hidden_size)
 
         # Positional Encoding + Transformer
-        self.pe          = PositionalEncoding(hidden_size, dropout=0.2)
-        encoder_layer    = nn.TransformerEncoderLayer(
+        encoder_layer    = TransformerEncoderLayerRoPE(
             d_model=hidden_size,
             nhead=nhead,
             dim_feedforward=ff_dim,
@@ -105,14 +103,13 @@ class Imitator(nn.Module):
         x = self.act1(x)                    # [B, pool_dim, hidden//2]
         x = x.transpose(1, 2)               # [B, hidden//2, pool_dim]
 
-        x = self.conv2(x)                  # [B, hidden//2, pool_dim]
-        x = x.transpose(1, 2)               # [B, pool_dim, hidden//2]
-        x = self.ln2(x)                     # [B, pool_dim, hidden//2]
-        x = self.act2(x)                    # [B, pool_dim, hidden//2]
+        x = self.conv2(x)                  # [B, pool_dim, pool_dim]
+        x = x.transpose(1, 2)               # [B, pool_dim, pool_dim]
+        x = self.ln2(x)                     # [B, pool_dim, pool_dim]
+        x = self.act2(x)                    # [B, pool_dim, pool_dim]
 
         x = self.linear_hidden(x)           # [B, pool_dim, hidden]
 
-        x = self.pe(x)
         if self.training:
             x = checkpoint(transformer_checkpoint, x, use_reentrant=False)
         else:
