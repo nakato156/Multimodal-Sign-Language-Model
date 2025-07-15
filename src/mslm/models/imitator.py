@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .components.positional_encoding import PositionalEncoding
+from .components import TransformerEncoderLayerRoPE
 import torch.utils.checkpoint as checkpoint
 
 class Imitator(nn.Module):
@@ -50,8 +50,7 @@ class Imitator(nn.Module):
         self.linear_hidden = nn.Linear(pool_dim, hidden_size)
 
         # Positional Encoding + Transformer
-        self.pe          = PositionalEncoding(hidden_size)
-        encoder_layer    = nn.TransformerEncoderLayer(
+        encoder_layer    = TransformerEncoderLayerRoPE(
             d_model=hidden_size,
             nhead=nhead,
             dim_feedforward=ff_dim,
@@ -63,7 +62,6 @@ class Imitator(nn.Module):
 
         # Proyección final por paso de tiempo
         self.proj = nn.Linear(hidden_size, output_size)
-
 
         self.token_queries = nn.Parameter(torch.randn(max_seq_length, output_size))  # [1, output_size]
         # Queries = E_tokens [n_tokens × B × d], Keys/Values = frames_repr [T' × B × d]
@@ -113,7 +111,6 @@ class Imitator(nn.Module):
 
         x = self.linear_hidden(x)           # [B, pool_dim, hidden]
 
-        x = self.pe(x)
         if self.training:
             x = checkpoint.checkpoint(
                 transformer_block, 
