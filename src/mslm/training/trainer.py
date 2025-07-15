@@ -101,13 +101,21 @@ class Trainer:
             weight_decay=1e-3,
             foreach=True
         )
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer,
-            mode='min',
-            factor=0.5,
-            patience=2,
-            min_lr=1e-7
-        )
+        
+        def linear_warmup_cosine_decay(current_step, warmup_steps, total_steps):
+            if current_step < warmup_steps:
+                return float(current_step) / float(max(1, warmup_steps))
+            return 0.5 * (1.0 + torch.cos(
+                torch.tensor((current_step - warmup_steps) / (total_steps - warmup_steps) * 3.1415926535))
+            ).item()
+
+        warmup_steps = 5 * len(self.train_loader)  # p.ej. 5 epochs de warm-up
+        total_steps = self.epochs * len(self.train_loader)
+
+        lr_lambda = lambda step: linear_warmup_cosine_decay(step, warmup_steps, total_steps)
+        self.scheduler = LambdaLR(self.optimizer, lr_lambda=lr_lambda)
+        self.prepare_optimizer_scheduler()
+
         self.prof = prof
 
         for epoch in tqdm(range(self.epochs), desc="Entrenando", colour="green"):
@@ -120,13 +128,11 @@ class Trainer:
                 self.ckpt_mgr.save_model(self.model, epoch)
             elif (epoch % self.checkpoint_interval == 0 and epoch != 0) :
                 self.ckpt_mgr.save_model(self.model, epoch)
-
-            val_loss = self._val(epoch)
-            self.scheduler.step(val_loss)
-            if self.early_stopping.stop:
+            elif self.early_stopping.stop:
                 self.ckpt_mgr.save_model(self.model, epoch)
-
-            self.scheduler.step()
+            
+            if self.scheduler is not None:
+                self.scheduler.step()
 
             if self.early_stopping.stop:
                 break
