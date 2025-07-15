@@ -110,7 +110,6 @@ class Imitator(nn.Module):
 
         x = self.linear_hidden(x)           # [B, pool_dim, hidden]
 
-        x = self.pe(x)
         if self.training:
             x = checkpoint(transformer_checkpoint, x, use_reentrant=False)
         else:
