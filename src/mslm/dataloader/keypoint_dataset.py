@@ -156,7 +156,7 @@ class TransformedSubset(Dataset):
         return keypoint, embedding, None
 
 class KeypointDataset(Dataset):
-    def __init__(self, h5Path, n_keypoints=117, transform=None, return_label=False, max_length=5000, data_augmentation=True):
+    def __init__(self, h5Path, n_keypoints=117, transform=None, return_label=False, max_length=4000, data_augmentation=True):
         self.h5Path = h5Path
         self.n_keypoints = n_keypoints
         self.transform = transform

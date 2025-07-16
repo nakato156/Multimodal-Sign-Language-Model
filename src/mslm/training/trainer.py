@@ -18,25 +18,12 @@ from src.mslm.checkpoint.manager import CheckpointManager
 from src.mslm.training import imitator_loss
 import nvtx
 from datetime import datetime
-import gc
-
-#print("Prueba de configuraciones",
-#    torch.backends.cuda.matmul.allow_tf32,
-#    torch.backends.cudnn.allow_tf32,
-#    torch._dynamo.config.cache_size_limit,
-#    torch._dynamo.config.dynamic_shapes,
-#    torch._dynamo.config.automatic_dynamic_shapes,
-#    
-#    os.environ.get('DYNAMIC_SHAPE'),
-#    os.environ.get('TORCH_LOGS'),
-#    os.environ.get('PYTORCH_CUDA_ALLOC_CONF')
-#)
 
 class Trainer:
-    def __init__(self, model, train_loader, val_loader, compile=True, save_tb_model=False, **kwargs):
+    def __init__(self, model, train_loader, val_loader, compile=True, save_tb_model=True, batch_sampling = True, **kwargs):
         dynamo_plugin = TorchDynamoPlugin(
             backend="inductor",  # Options: "inductor", "aot_eager", "aot_nvfuser", etc.
-            mode="default",      # Options: "default", "reduce-overhead", "max-autotune"
+            mode="reduce-overhead",      # Options: "default", "reduce-overhead", "max-autotune"
             dynamic=True
         )
         
@@ -52,6 +39,7 @@ class Trainer:
         self.log_interval = kwargs.get("log_interval", 5)
         self.save_tb_model = save_tb_model
         self.writer = SummaryWriter(f"../outputs/reports/{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}")
+        self.graph_added = False
         
         #Save and checkpoint
         self.checkpoint_interval = kwargs.get("checkpoint_interval", 5)
@@ -84,6 +72,12 @@ class Trainer:
         #Optimizer
         self.optimizer = None
         self.scheduler = None
+
+        #Batch Sampling
+        self.batch_size = kwargs.get("batch_size", 5)
+        self.batch_sampling = batch_sampling
+        if self.batch_sampling:
+            self.sub_batch = kwargs.get("sub_batch_size", 4)
 
         #Options 
         self.prof = False
@@ -126,9 +120,7 @@ class Trainer:
 
         for epoch in tqdm(range(self.epochs), desc="Entrenando", colour="green"):
             train_loss = self._train_epoch(epoch)
-            torch.cuda.empty_cache()
             val_loss = self._val(epoch)
-            torch.cuda.empty_cache()
 
             if epoch == 1:
                 self.ckpt_mgr.save_model(self.model, epoch)
@@ -138,10 +130,10 @@ class Trainer:
                 self.ckpt_mgr.save_model(self.model, epoch)
             elif self.early_stopping.stop:
                 self.ckpt_mgr.save_model(self.model, epoch)
-
-            val_loss = self._val(epoch)
+            
             if self.scheduler is not None:
                 self.scheduler.step()
+
             if self.early_stopping.stop:
                 break
 
@@ -202,7 +194,6 @@ class Trainer:
             if epoch % self.log_interval == 0:
                 tqdm.write(f"\nEpoch: {epoch}.\t Total loss: {train_loss/len(self.train_loader)}")
 
-            #torch.cuda.empty_cache()
         return train_loss, val_loss
 
     @nvtx.annotate("Train: Train Epoch", color="green")
@@ -211,7 +202,8 @@ class Trainer:
         total_loss = 0
         for keypoint, frames_padding_mask, embedding, mask_embedding in self.train_loader:
             if self.save_tb_model and epoch == 1 and not getattr(self, "graph_added", False):
-                self.writer.add_graph(self.model, next(iter(self.train_loader))[:2])
+                print("Saving graph")
+                self.writer.add_graph(self.model, (keypoint, frames_padding_mask))
                 self.graph_added = True           
             
             with self.accelerator.accumulate(self.model):
@@ -231,14 +223,10 @@ class Trainer:
         if epoch % self.log_interval == 0:
             tqdm.write(f"\nEpoch: {epoch}.\t Total loss: {final_train_loss}")
 
-        gc.collect()
         return total_loss
 
     def _forward_loss(self, keypoint, frames_padding_mask, embedding, mask_embedding):
         with self.accelerator.autocast():
-            keypoint = keypoint.to(torch.float32)
-            embedding = embedding.to(torch.float32)
-
             output = self.model(keypoint, frames_padding_mask)
             loss = self.criterion(output, embedding, mask_embedding)
             
@@ -247,30 +235,61 @@ class Trainer:
 
     @nvtx.annotate("Train: Train Batch", color="green")
     def _train_batch(self, keypoint, frames_padding_mask, embedding, mask_embedding):
+        batch_loss = 0.0
+        batch_size = keypoint.size(0)
+        start = 0
+        end = keypoint.size(0)
+        n_sub_batch = 0
+        if self.batch_sampling:
+            n_sub_batch = (batch_size + self.sub_batch - 1) // self.sub_batch
         if not self.prof:
-            try:
-                with torch.autograd.set_detect_anomaly(True):
-                    loss = self._forward_loss(keypoint, frames_padding_mask, embedding, mask_embedding)
-                    self.accelerator.backward(loss)
-            except Exception as e:
-                print(e)
-                print("Keypoint: ", keypoint.shape, "\n", 
-                      "MaskFrame: ", frames_padding_mask.shape, "\n",
-                      "Embedding: ", embedding.shape, "\n",
-                      "Mask Embedding: ", mask_embedding.shape
-                      )
+            with torch.autograd.set_detect_anomaly(True):
+                for i in range(n_sub_batch):
+                    if self.batch_sampling:
+                        start = i * self.sub_batch
+                        end = min(start + self.sub_batch, batch_size)
+                    try:
+                        loss = self._forward_loss(keypoint[start:end], 
+                                                frames_padding_mask[start:end], 
+                                                embedding[start:end], 
+                                                mask_embedding[start:end])
+                        if self.batch_sampling:
+                            loss = loss/(n_sub_batch)
+                        self.accelerator.backward(loss)
+                        batch_loss += loss.detach()
+                    except Exception as e:
+                        print("Error: ", e)
+                        print("Keypoints: ", keypoint[start:end])
+                        print("Frames Padding Mask: ", frames_padding_mask[start:end])
+                        print("Embedding: ", embedding[start:end])
+                        print("Mask Embedding: ", mask_embedding[start:end])
+
             self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.optimizer.step()
         else:
-            with torch.autograd.set_detect_anomaly(True):
-                with nvtx.annotate("Forward Pass", color="blue"):
-                    loss = self._forward_loss(keypoint, frames_padding_mask, embedding, mask_embedding)
-                with nvtx.annotate("Backward Pass", color="blue"):
-                        self.accelerator.backward(loss)
+            with nvtx.annotate("Sub_batch", color="blue"):
+                    with torch.autograd.set_detect_anomaly(True):
+                        for i in range(n_sub_batch):
+                            if self.batch_sampling:
+                                start = i * self.sub_batch
+                                end = min(start + self.sub_batch, self.batch_size)                
+                            if end - start != 0 and end - start < self.sub_batch:
+                                continue                 
+                            with nvtx.annotate("Forward Pass", color="blue"):
+                                loss = self._forward_loss(keypoint[start:end], 
+                                                        frames_padding_mask[start:end], 
+                                                        embedding[start:end], 
+                                                        mask_embedding[start:end])
+                            with nvtx.annotate("Backward Pass", color="blue"):
+                                self.accelerator.backward(loss)
+                            batch_loss += loss.detach()
+
             with nvtx.annotate("Update", color="blue"):    
                 self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.optimizer.step()
-        return loss.detach()
+
+
+        return batch_loss / (n_sub_batch + 1)
 
     @nvtx.annotate("Validation Section", color="green")
     def _val(self, epoch):
@@ -285,7 +304,7 @@ class Trainer:
                 if self.distributed.get_rank() == 0:
                     print(f"World-avg val loss: {loss:.4f}")
             else:
-                val_loss += loss.detach()
+                val_loss += loss
         final_val_loss = val_loss.item() / len(self.val_loader)
         self.writer.add_scalar("Loss/val", final_val_loss, epoch)
 
@@ -297,9 +316,36 @@ class Trainer:
 
     @nvtx.annotate("Val: Validate Batch", color="green")
     def _val_batch(self, keypoint, frames_padding_mask, embedding, mask_embedding):
+        batch_loss = 0.0
+        batch_size = keypoint.size(0)
+        start = 0
+        end = keypoint.size(0)
+        if self.batch_sampling:
+            n_sub_batch = (batch_size + self.sub_batch - 1) // self.sub_batch
+
         if not self.prof:
-            loss = self._forward_loss(keypoint, frames_padding_mask, embedding, mask_embedding)
+                for i in range(n_sub_batch):
+                    if self.batch_sampling:
+                        start = i * self.sub_batch
+                        end = min(start + self.sub_batch, batch_size)
+                    if end - start != 0 and end - start < self.sub_batch:
+                        continue                 
+                loss = self._forward_loss(keypoint[start:end], 
+                                        frames_padding_mask[start:end], 
+                                        embedding[start:end], 
+                                        mask_embedding[start:end])
+                batch_loss += loss.detach()
         else:
             with nvtx.annotate("Val: Forward + Loss", color="blue"):
-                loss = self._forward_loss(keypoint, frames_padding_mask, embedding, mask_embedding)
-        return loss
+                for i in range(n_sub_batch):
+                    if self.batch_sampling:
+                        start = i * self.sub_batch
+                        end = min(start + self.sub_batch, self.batch_size)                
+                    with nvtx.annotate("Forward Pass", color="blue"):
+                        loss = self._forward_loss(keypoint[start:end], 
+                                                frames_padding_mask[start:end], 
+                                                embedding[start:end], 
+                                                mask_embedding[start:end])
+                    batch_loss += loss.detach()
+
+        return batch_loss    

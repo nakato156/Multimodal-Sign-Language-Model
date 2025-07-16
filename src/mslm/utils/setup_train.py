@@ -26,7 +26,7 @@ def setup_paths():
 
 def prepare_datasets(h5File, train_ratio, n_keypoints=112):
     """Carga el dataset base, lo envuelve y lo divide en entrenamiento y validación."""
-    keypoint_reader = KeypointDataset(h5Path=h5File, return_label=False, n_keypoints=n_keypoints, data_augmentation=True)
+    keypoint_reader = KeypointDataset(h5Path=h5File, return_label=False, n_keypoints=n_keypoints, data_augmentation=True, max_length=4000)
     train_dataset, validation_dataset, train_length, val_length = keypoint_reader.split_dataset(train_ratio)
 
     print(f"Train size:\t{len(train_dataset)}\nValidation size:\t{len(validation_dataset)}")
@@ -79,9 +79,9 @@ def build_model(input_size, output_size, device, **kwargs):
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
     return model
 
-def run_training(params, train_dataloader, val_dataloader, model, profile_model=0, compile=True):
+def run_training(params, train_dataloader, val_dataloader, model, profile_model=0, compile=True, batch_sampling=True):
     """Configura y ejecuta el entrenamiento."""
-    trainer = Trainer(model, train_dataloader, val_dataloader, compile=compile, **params)
+    trainer = Trainer(model, train_dataloader, val_dataloader, compile=compile, batch_sampling=batch_sampling, **params)
     trainer.ckpt_mgr.save_params(params)
 
     if profile_model == 1:
