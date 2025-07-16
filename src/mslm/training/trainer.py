@@ -23,7 +23,7 @@ class Trainer:
     def __init__(self, model, train_loader, val_loader, compile=True, save_tb_model=True, batch_sampling = True, **kwargs):
         dynamo_plugin = TorchDynamoPlugin(
             backend="inductor",  # Options: "inductor", "aot_eager", "aot_nvfuser", etc.
-            mode="default",      # Options: "default", "reduce-overhead", "max-autotune"
+            mode="reduce-overhead",      # Options: "default", "reduce-overhead", "max-autotune"
             dynamic=True
         )
         
@@ -304,7 +304,7 @@ class Trainer:
                 if self.distributed.get_rank() == 0:
                     print(f"World-avg val loss: {loss:.4f}")
             else:
-                val_loss += loss.detach()
+                val_loss += loss
         final_val_loss = val_loss.item() / len(self.val_loader)
         self.writer.add_scalar("Loss/val", final_val_loss, epoch)
 
