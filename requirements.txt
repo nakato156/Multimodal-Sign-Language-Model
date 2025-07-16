@@ -1,5 +1,6 @@
 poethepoet
 torch
+torchvision
 numpy
 openmim
 tensorboard
@@ -11,3 +12,5 @@ grpcio-tools
 optuna
 onnxruntime-gpu
 onnxscript
+accelerate
+transformers

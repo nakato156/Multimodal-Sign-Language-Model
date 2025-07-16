@@ -1,6 +1,6 @@
 output_size= 3072
 hidden_size= 2048
 nhead= 8
-ff_dim= 3136
-n_layers= 2
+ff_dim= 1024
+n_layers= 6
 device="auto"

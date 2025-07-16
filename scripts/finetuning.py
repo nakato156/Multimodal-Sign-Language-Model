@@ -26,7 +26,6 @@ llama_model, tokenizer = FastLanguageModel.from_pretrained(
     load_in_4bit=True,
 )
 
-
 torch.serialization.add_safe_globals([Imitator, PositionalEncoding])
 checkpoint_name = "../outputs/checkpoints/41/1/5/model.pt"
 

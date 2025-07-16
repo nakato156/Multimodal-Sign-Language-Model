@@ -1,13 +1,12 @@
 import torch
 import torch.nn as nn
-from .components.positional_encoding import PositionalEncoding
-import torch.nn.functional as F
+from .components import TransformerEncoderLayerRoPE
 import torch.utils.checkpoint as checkpoint
 
 class Imitator(nn.Module):
     def __init__(
         self,
-        input_size: int = 250*2,
+        input_size: int = 133*2,
         hidden_size: int = 512,
         output_size: int = 3072,
         nhead: int = 8,
@@ -16,7 +15,7 @@ class Imitator(nn.Module):
         max_seq_length: int = 301,
     ):
         super().__init__()
-        
+
         self.cfg = {
             "input_size": input_size,
             "hidden_size": hidden_size,
@@ -31,41 +30,38 @@ class Imitator(nn.Module):
 
         self.linear_feat = nn.Sequential(
             nn.Linear(input_size, hidden_size),
-            nn.LayerNorm(hidden_size),
             nn.GELU(),
+            nn.LayerNorm(hidden_size),
             nn.Linear(hidden_size, hidden_size // 2),
+            nn.GELU(),
             nn.LayerNorm(hidden_size // 2)
         )
 
         pool_dim = 256
-        self.linear_seq = nn.Sequential(
-            nn.Conv1d(hidden_size//2, pool_dim, kernel_size=3, padding=1),
-            nn.BatchNorm1d(pool_dim),
-            nn.GELU(),
-            nn.Conv1d(pool_dim, pool_dim, kernel_size=1),
-            nn.BatchNorm1d(pool_dim),
-            nn.GELU(),
-        )
+        # linear sequencer
+        self.conv1  = nn.Conv1d(hidden_size//2, pool_dim, kernel_size=3, padding=1)
+        self.ln1    = nn.LayerNorm(pool_dim)
+        self.act1   = nn.GELU()
+        self.conv2  = nn.Conv1d(pool_dim, pool_dim, kernel_size=1)
+        self.ln2    = nn.LayerNorm(pool_dim)
+        self.act2   = nn.GELU()
     
         # Volvemos a hidden_size
         self.linear_hidden = nn.Linear(pool_dim, hidden_size)
-        self.norm4         = nn.LayerNorm(hidden_size)
 
         # Positional Encoding + Transformer
-        self.pe          = PositionalEncoding(hidden_size)
-        encoder_layer    = nn.TransformerEncoderLayer(
+        encoder_layer    = TransformerEncoderLayerRoPE(
             d_model=hidden_size,
             nhead=nhead,
             dim_feedforward=ff_dim,
             batch_first=True,
-            dropout=0.2,
+            dropout=0.4,
             norm_first=True
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
 
         # Proyección final por paso de tiempo
         self.proj = nn.Linear(hidden_size, output_size)
-
 
         self.token_queries = nn.Parameter(torch.randn(max_seq_length, output_size))  # [1, output_size]
         # Queries = E_tokens [n_tokens × B × d], Keys/Values = frames_repr [T' × B × d]
@@ -79,19 +75,20 @@ class Imitator(nn.Module):
         self.norm_attn = nn.LayerNorm(output_size)
 
         self.proj_final = nn.Sequential(
-            nn.LayerNorm(output_size),
+            nn.Linear(output_size, output_size * 2),
             nn.GELU(),
-            nn.Linear(output_size, output_size),
+            nn.Dropout(0.1),
+            nn.Linear(output_size * 2, output_size)
         )
 
-    def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor=None) -> torch.Tensor:
+    def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor) -> torch.Tensor:
         """
         x: Tensor of frames
         returns: Tensor of embeddings for each token (128 tokens of frames)
         """
-
-        def transformer_block(x):
-            return self.transformer(x,src_key_padding_mask=frames_padding_mask)
+        
+        def transformer_checkpoint(x):
+            return self.transformer(x, src_key_padding_mask=frames_padding_mask)
 
         B, T, D, K = x.shape                # x -> [batch_size, T, input_size]
         x = x.view(B, T,  D * K)            # [B, T, input_size]
@@ -100,38 +97,36 @@ class Imitator(nn.Module):
 
         x = x.transpose(1, 2)               # [B, hidden//2, T]
         # se mantiene T' = T o reducirdo a pool_dim
-        x  = self.linear_seq(x)             # [B, hidden//2, pool_dim]
+        x  = self.conv1(x)                  # [B, hidden//2, pool_dim]
         x = x.transpose(1, 2)               # [B, pool_dim, hidden//2]
+        x = self.ln1(x)                     # [B, pool_dim, hidden//2]
+        x = self.act1(x)                    # [B, pool_dim, hidden//2]
+        x = x.transpose(1, 2)               # [B, hidden//2, pool_dim]
+
+        x = self.conv2(x)                  # [B, pool_dim, pool_dim]
+        x = x.transpose(1, 2)               # [B, pool_dim, pool_dim]
+        x = self.ln2(x)                     # [B, pool_dim, pool_dim]
+        x = self.act2(x)                    # [B, pool_dim, pool_dim]
 
         x = self.linear_hidden(x)           # [B, pool_dim, hidden]
 
-        x = self.norm4(x)                   # [B, pool_dim, hidden]
-        x = F.relu(x)                       # [B, pool_dim, hidden]
-
-        x = self.pe(x)
         if self.training:
-            x = checkpoint.checkpoint(
-                transformer_block, 
-                x,
-                use_reentrant=True
-            )                               # [B, pool_dim, hidden]
+            x = checkpoint(transformer_checkpoint, x, use_reentrant=False)
         else:
-            x = self.transformer(x, src_key_padding_mask=frames_padding_mask)
+            x = transformer_checkpoint(x)  # [B, pool_dim, hidden]
 
-        M = self.proj(x).contiguous()        # [B, pool_dim, output_size]
+        M = self.proj(x)     # [B, pool_dim, output_size]
+        # M = M.masked_fill(frames_padding_mask.unsqueeze(-1), 0.0)
         
-        Q = self.token_queries.unsqueeze(0).expand(B, -1, -1).contiguous()   # [B, n_tokens, output_size]
-        
-        if frames_padding_mask is not None:
-            frames_padding_mask = frames_padding_mask.contiguous()
-
+        Q = self.token_queries.unsqueeze(0).expand(B, -1, -1)   # [B, n_tokens, output_size]
+    
         attn_out, attn_w = self.cross_attn(
             query=Q,
             key=M,
             value=M,
             key_padding_mask=frames_padding_mask
         )  # [B, n_tokens, output_size]
-        attn_out = self.norm_attn(attn_out)
+        x = self.norm_attn(Q + attn_out)
         # print(f"Attention output shape: {attn_out.shape}, Q shape: {Q.shape}, M shape: {M.shape}")
-        x = self.proj_final(attn_out)        # [B, n_tokens, output_size]
+        #x = x + stochastic_depth(self.proj_final(attn_out), p=0.2, mode="row")        # [B, n_tokens, output_size]
         return x

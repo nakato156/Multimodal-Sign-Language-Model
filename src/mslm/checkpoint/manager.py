@@ -1,5 +1,8 @@
 import os, json
 import torch
+from torch.export.dynamic_shapes import Dim
+
+
 
 # Save architecture
 # The epoch 1 always has the model.pt as the keys
@@ -25,7 +28,7 @@ class CheckpointManager:
         # Checks if the checkpoint folder is empty or not
         self.run = 1
         # self._check_run_path()
-
+        
     def _path(self, extra=""):
         p = os.path.join(self.base, str(self.v), str(self.ckpt), extra)
         os.makedirs(p, exist_ok=True)
