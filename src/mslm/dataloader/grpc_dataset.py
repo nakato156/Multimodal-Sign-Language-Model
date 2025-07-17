@@ -4,7 +4,7 @@ import grpc
 from src.mslm.distributed import data_pb2, data_pb2_grpc
 
 class GRPCDataset(IterableDataset):
-    def __init__(self, address, rank, world_size, split):
+    def __init__(self, address: str, rank: int, world_size: int, split: int):
         channel = grpc.insecure_channel(address, options=[
             ('grpc.max_send_message_length',    100*1024*1024),
             ('grpc.max_receive_message_length', 100*1024*1024),

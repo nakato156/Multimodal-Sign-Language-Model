@@ -1,5 +1,4 @@
 import numpy as np
-
 from video_reader import PyVideoReader
 from rtmlib import Custom
 import pickle
@@ -10,21 +9,11 @@ from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 import cv2
 
-DEBUG = False
-
 class KeypointProcessing:
     def __init__(self):
         self.backend = 'onnxruntime'
         self.device = 'cuda'
         self.openpose= True
-
-#        self.model_pose = RTMPose(onnx_model='https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-l_simcc-ucoco_dw-ucoco_270e-384x288-2438fd99_20230728.zip',
-#                            backend=backend,
-#                            device=device)
-#
-#        self.model_det = RTMDet(onnx_model='https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_x_8xb8-300e_humanart-a39d44ed.zip',
-#                            backend=backend,
-#                            device=device)
 
     def load_model(self):
         self.model = Custom(
@@ -77,12 +66,6 @@ class KeypointProcessing:
                  desc=f"Frames {start}-{end-1}"))   
             all_keypoints.extend(chunk_kp)
 
-        if DEBUG: 
-            print("Saving keypoints")
-            with open("keypointsTest.pkl", "wb") as kp:
-                pickle.dump(all_keypoints, kp)
-            print("Keypoints saved")
-        
         result = self.compute_person_movement(all_keypoints)
         signer_id = max(result.items(), key=lambda x: x[1]['total'])[0]
         print("Likely signer:", signer_id, "with total hand movement:", result[signer_id]['total'])
@@ -135,7 +118,7 @@ class KeypointProcessing:
                 pose = person[0:25,:]
                 face = person[25:95,:]
                 hand_l = person[95:116,:]
-                hand_r = person[0:,:]
+                hand_r = person[116:,:]
 
                 lh_rel, rh_rel = self.compute_relative_position(pose, hand_l, hand_r)
 

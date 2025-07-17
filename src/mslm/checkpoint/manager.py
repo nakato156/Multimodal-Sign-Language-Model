@@ -2,8 +2,6 @@ import os, json
 import torch
 from torch.export.dynamic_shapes import Dim
 
-
-
 # Save architecture
 # The epoch 1 always has the model.pt as the keys
 # The if the checkpoint has different keys it changes from another
@@ -15,9 +13,8 @@ from torch.export.dynamic_shapes import Dim
 # Runs       - Same architecture different runs or epochs
 # Epoch
 
-
 class CheckpointManager:
-    def __init__(self, base_dir, version, checkpoint):
+    def __init__(self, base_dir: str, version: int, checkpoint: int):
         self.base = base_dir
         self.v = version
 
