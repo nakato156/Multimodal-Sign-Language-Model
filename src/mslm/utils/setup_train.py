@@ -14,7 +14,7 @@ from src.mslm.dataloader import KeypointDataset, collate_fn, GRPCDataset, BatchS
 from src.mslm.utils.paths import path_vars
 
 #Profilers
-from torch.profiler import profile, ProfilerActivity
+from torch.profiler import profile, ProfilerActivity, record_function
 import datetime
 
 def setup_paths():
@@ -72,34 +72,55 @@ def create_dataloaders(train_dataset, validation_dataset, batch_size, num_worker
         )
     return train_dataloader, val_dataloader
 
-def build_model(input_size, output_size, device, **kwargs):
+def build_model(input_size, output_size, **kwargs):
     """Construye, compila y retorna el modelo Imitator."""
     model = Imitator(input_size=input_size, output_size=output_size, **kwargs)
     print(model)
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
     return model
 
-def run_training(params, train_dataloader, val_dataloader, model, profile_model=0, compile=True, batch_sampling=True):
+def run_training(params, train_dataloader, val_dataloader, model):
     """Configura y ejecuta el entrenamiento."""
-    trainer = Trainer(model, train_dataloader, val_dataloader, compile=compile, batch_sampling=batch_sampling, **params)
+    trainer = Trainer(model, train_dataloader, val_dataloader, **params)
     trainer.ckpt_mgr.save_params(params)
 
-    if profile_model == 1:
+    print("Starting training...")
+    return trainer.train()
+
+def profile_training(params, train_dataloader, val_dataloader, model, profile_mode: str):
+    trainer = Trainer(model, train_dataloader, val_dataloader, **params)
+    trainer.ckpt_mgr.save_params(params)
+
+    if profile_mode == "nvidia":
+        print("Starting training with profiling nvidia...")
         return trainer.train(prof=True)
-    elif profile_model == 2:
-        print("Starting training with profiling...")
+    elif profile_mode == "pytorch_model":
+        print("Starting training with profiling pytorch...")
+        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+                    record_shapes=True,
+                    with_stack=True) as p:
+            with record_function("train"):
+                trainer.train()
+            file_path = f"{path_vars.report_path}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            print(f"Saved at: {file_path}")    
+            p.export_chrome_trace(f"{file_path}.json.gz")
+            p.export_stacks(f"{file_path}_stacks.txt", "self_cpu_time_total")
+    elif profile_mode == "pytorch_memory":
+        print("Starting training with profiling memory torch...")
         with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
                     record_shapes=True,
                     with_stack=True,
                     profile_memory=True) as p:
-            trainer.train()
-        file_path = f"{path_vars.report_path}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        print(f"Saved at: {file_path}")    
-        p.export_chrome_trace(f"{file_path}.json.gz")
-        p.export_memory_timeline(f"{file_path}.html", device="cuda:0")
+            with record_function("train"):
+                trainer.train()
+            file_path = f"{path_vars.report_path}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            print(f"Saved at: {file_path}")    
+            p.export_chrome_trace(f"{file_path}.json.gz")
+            p.export_stacks(f"{file_path}_stacks.txt", "self_cpu_time_total")
+            p.export_memory_profile(f"{file_path}_memory.txt")
+
     else:
-        print("Starting training...")
-        return trainer.train()
+        raise ValueError("Unsupported profiling mode. Use 'nvidia' or 'pytorch'.")
 
 def run_dt_training(params, train_dataloader, val_dataloader, model, rank, channel, dist, stub):
     """Configura y ejecuta el entrenamiento."""

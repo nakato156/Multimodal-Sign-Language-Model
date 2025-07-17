@@ -60,8 +60,7 @@ class Trainer:
 
         #Model
         self.model = self.accelerator.prepare_model(model)
-        self.model = model.to(torch.float32)
-        
+                
         #Dataloaders
         self.train_loader = self.accelerator.prepare_data_loader(train_loader)
         self.val_loader = self.accelerator.prepare_data_loader(val_loader)
