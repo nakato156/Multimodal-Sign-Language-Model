@@ -1,7 +1,7 @@
 import torch
 from torch.nn.utils.rnn import pad_sequence
 
-def collate_fn(batch, LOG=False):
+def collate_fn(batch):
     """
     batch: List of tuples (keypoints, embeddings)
       - keypoints: [T_i, K, D]
