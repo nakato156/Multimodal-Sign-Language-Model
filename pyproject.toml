@@ -31,7 +31,7 @@ dev = [
 [tool.poe.tasks]
 # Definimos cada tarea con su propio bloque para pasar PYTHONPATH
 [tool.poe.tasks.train]
-cmd = "python scripts/train.py --epochs 100 --batch_size 32 --batch_sampling 4"
+cmd = "python scripts/train.py --epochs 100 --batch_size 64 --batch_sampling 16"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.finetune]

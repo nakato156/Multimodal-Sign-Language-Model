@@ -41,10 +41,10 @@ class KeypointDataset(Dataset):
         self.data_augmentation = data_augmentation
     
         self.data_augmentation_dict = {
-            0: "Length_variance",
-            1: "Gaussian_jitter",
-            2: "Rotation_2D",
-            4: "Scaling"
+        #    0: "Length_variance",
+        #    1: "Gaussian_jitter",
+        #    2: "Rotation_2D",
+        #    4: "Scaling"
         }
 
         self.dataset_length = 0

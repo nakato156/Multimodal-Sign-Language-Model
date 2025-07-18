@@ -81,14 +81,14 @@ def build_model(input_size, output_size, **kwargs):
 
 def run_training(params, train_dataloader, val_dataloader, model):
     """Configura y ejecuta el entrenamiento."""
-    trainer = Trainer(model, train_dataloader, val_dataloader, **params)
+    trainer = Trainer(model, train_dataloader, val_dataloader,save_tb_model=False , **params)
     trainer.ckpt_mgr.save_params(params)
 
     print("Starting training...")
     return trainer.train()
 
 def profile_training(params, train_dataloader, val_dataloader, model, profile_mode: str):
-    trainer = Trainer(model, train_dataloader, val_dataloader, **params)
+    trainer = Trainer(model, train_dataloader, val_dataloader,save_tb_model=False, **params)
     trainer.ckpt_mgr.save_params(params)
 
     if profile_mode == "nvidia":
@@ -124,7 +124,7 @@ def profile_training(params, train_dataloader, val_dataloader, model, profile_mo
 
 def run_dt_training(params, train_dataloader, val_dataloader, model, rank, channel, dist, stub):
     """Configura y ejecuta el entrenamiento."""
-    trainer = Trainer(model, train_dataloader, val_dataloader, **params)
+    trainer = Trainer(model, train_dataloader, val_dataloader,save_tb_model=False, **params)
     trainer.ckpt_mgr.save_params(params)
 
     print("Starting training...")

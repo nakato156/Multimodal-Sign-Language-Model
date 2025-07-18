@@ -54,7 +54,7 @@ def run(
     train_config["compile"] = True
 
     tr_ds, val_ds, tr_len, val_len = prepare_datasets(h5_file, train_ratio, key_points)
-    tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=6, train_length=tr_len, val_length=val_len)
+    tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=10, train_length=tr_len, val_length=val_len)
 
     model = build_model(**model_parameters)
     run_training(train_config, tr_dl, val_dl, model)
