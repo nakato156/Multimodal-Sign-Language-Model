@@ -215,7 +215,7 @@ class Trainer:
                 if self.distributed.get_rank() == 0:
                     print(f"World-avg train loss: {loss:.4f}")
             else:
-                total_loss += loss.detach()
+                total_loss += loss
                 
         final_train_loss = total_loss.item()/len(self.train_loader)
         self.writer.add_scalar("Loss/train", final_train_loss, epoch)
@@ -247,21 +247,21 @@ class Trainer:
                     if self.batch_sampling:
                         start = i * self.sub_batch
                         end = min(start + self.sub_batch, batch_size)
-                    try:
-                        loss = self._forward_loss(keypoint[start:end], 
+                    # try:
+                    loss = self._forward_loss(keypoint[start:end], 
                                                 frames_padding_mask[start:end], 
                                                 embedding[start:end], 
                                                 mask_embedding[start:end])
-                        if self.batch_sampling:
-                            loss = loss/(n_sub_batch)
-                        self.accelerator.backward(loss)
-                        batch_loss += loss.detach()
-                    except Exception as e:
-                        print("Error: ", e)
-                        print("Keypoints: ", keypoint[start:end])
-                        print("Frames Padding Mask: ", frames_padding_mask[start:end])
-                        print("Embedding: ", embedding[start:end])
-                        print("Mask Embedding: ", mask_embedding[start:end])
+                    if self.batch_sampling:
+                        loss = loss/(n_sub_batch)
+                    self.accelerator.backward(loss)
+                    batch_loss += loss.detach()
+                    # except Exception as e:
+                    #     print("Error: ", e)
+                    #     print("Keypoints: ", keypoint[start:end])
+                    #     print("Frames Padding Mask: ", frames_padding_mask[start:end])
+                    #     print("Embedding: ", embedding[start:end])
+                    #     print("Mask Embedding: ", mask_embedding[start:end])
 
             self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.optimizer.step()

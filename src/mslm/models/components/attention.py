@@ -2,24 +2,26 @@ import torch
 from torch.nn import MultiheadAttention
 from torchtune.modules import RotaryPositionalEmbeddings
 import torch.nn.functional as F
+from torch.nn.modules.activation import _check_arg_device, _arg_requires_grad, _is_make_fx_tracing
 from torch import Tensor
-from torch.nn.modules.activation import _is_make_fx_tracing, _arg_requires_grad, _check_arg_device
 from typing import Optional
+from .functional import multi_head_attention_with_rope_forward
 
 class MultiheadAttentionRoPE(MultiheadAttention):
-    def __init__(self, embed_dim, num_heads, dropout=0.0, batch_first:bool=False, norm_first:bool=False, use_rotary:bool=False, **kwargs):
+    def __init__(self, embed_dim, num_heads, dropout=0.0, batch_first:bool=False, use_rotary:bool=False, **kwargs):
+        print("MHARoPE kwargs", kwargs)
         super(MultiheadAttentionRoPE, self).__init__(
             embed_dim=embed_dim,
             num_heads=num_heads,
             dropout=dropout,
             batch_first=batch_first,
-            norm_first=norm_first,
             **kwargs
         )
         
         self.rotary_pos_emb = None
+        self.use_rotary = use_rotary
         if use_rotary:
-            self.use_rotary = use_rotary
+            print("dim:", embed_dim, "num_heads:", num_heads, "dim rope", embed_dim // num_heads)
             self.rotary_pos_emb = RotaryPositionalEmbeddings(embed_dim // num_heads)
 
     def forward(
@@ -229,57 +231,106 @@ class MultiheadAttentionRoPE(MultiheadAttention):
             else:
                 query, key, value = (x.transpose(1, 0) for x in (query, key, value))
 
-        if self.use_rotary:
-            query, key = self.rotary_pos_emb(query, key)
-            
         if not self._qkv_same_embed_dim:
-            attn_output, attn_output_weights = F.multi_head_attention_forward(
-                query,
-                key,
-                value,
-                self.embed_dim,
-                self.num_heads,
-                self.in_proj_weight,
-                self.in_proj_bias,
-                self.bias_k,
-                self.bias_v,
-                self.add_zero_attn,
-                self.dropout,
-                self.out_proj.weight,
-                self.out_proj.bias,
-                training=self.training,
-                key_padding_mask=key_padding_mask,
-                need_weights=need_weights,
-                attn_mask=attn_mask,
-                use_separate_proj_weight=True,
-                q_proj_weight=self.q_proj_weight,
-                k_proj_weight=self.k_proj_weight,
-                v_proj_weight=self.v_proj_weight,
-                average_attn_weights=average_attn_weights,
-                is_causal=is_causal,
-            )
+            if self.use_rotary and self.rotary_pos_emb is not None:
+                multi_head_attention_with_rope_forward(
+                    query,
+                    key,
+                    value,
+                    self.embed_dim,
+                    self.num_heads,
+                    self.in_proj_weight,
+                    self.in_proj_bias,
+                    self.bias_k,
+                    self.bias_v,
+                    self.add_zero_attn,
+                    self.dropout,
+                    self.out_proj.weight,
+                    self.out_proj.bias,
+                    rotary_pos_emb=self.rotary_pos_emb,  # modulo RoPE
+                    training=self.training,
+                    key_padding_mask=key_padding_mask,
+                    need_weights=need_weights,
+                    attn_mask=attn_mask,
+                    use_separate_proj_weight=not self._qkv_same_embed_dim,
+                    q_proj_weight=self.q_proj_weight,
+                    k_proj_weight=self.k_proj_weight,
+                    v_proj_weight=self.v_proj_weight,
+                    average_attn_weights=average_attn_weights,
+                    is_causal=is_causal,
+                )
+            else:
+                attn_output, attn_output_weights = F.multi_head_attention_forward(
+                    query,
+                    key,
+                    value,
+                    self.embed_dim,
+                    self.num_heads,
+                    self.in_proj_weight,
+                    self.in_proj_bias,
+                    self.bias_k,
+                    self.bias_v,
+                    self.add_zero_attn,
+                    self.dropout,
+                    self.out_proj.weight,
+                    self.out_proj.bias,
+                    training=self.training,
+                    key_padding_mask=key_padding_mask,
+                    need_weights=need_weights,
+                    attn_mask=attn_mask,
+                    use_separate_proj_weight=True,
+                    q_proj_weight=self.q_proj_weight,
+                    k_proj_weight=self.k_proj_weight,
+                    v_proj_weight=self.v_proj_weight,
+                    average_attn_weights=average_attn_weights,
+                    is_causal=is_causal,
+                )
         else:
-            attn_output, attn_output_weights = F.multi_head_attention_forward(
-                query,
-                key,
-                value,
-                self.embed_dim,
-                self.num_heads,
-                self.in_proj_weight,
-                self.in_proj_bias,
-                self.bias_k,
-                self.bias_v,
-                self.add_zero_attn,
-                self.dropout,
-                self.out_proj.weight,
-                self.out_proj.bias,
-                training=self.training,
-                key_padding_mask=key_padding_mask,
-                need_weights=need_weights,
-                attn_mask=attn_mask,
-                average_attn_weights=average_attn_weights,
-                is_causal=is_causal,
-            )
+            if self.use_rotary and self.rotary_pos_emb is not None:
+                attn_output, attn_output_weights = multi_head_attention_with_rope_forward(
+                    query,
+                    key,
+                    value,
+                    self.embed_dim,
+                    self.num_heads,
+                    self.in_proj_weight,
+                    self.in_proj_bias,
+                    self.bias_k,
+                    self.bias_v,
+                    self.add_zero_attn,
+                    self.dropout,
+                    self.out_proj.weight,
+                    self.out_proj.bias,
+                    rotary_pos_emb=self.rotary_pos_emb,  # modulo RoPE
+                    training=self.training,
+                    key_padding_mask=key_padding_mask,
+                    need_weights=need_weights,
+                    attn_mask=attn_mask,
+                    average_attn_weights=average_attn_weights,
+                    is_causal=is_causal
+                )
+            else:
+                attn_output, attn_output_weights = F.multi_head_attention_forward(
+                    query,
+                    key,
+                    value,
+                    self.embed_dim,
+                    self.num_heads,
+                    self.in_proj_weight,
+                    self.in_proj_bias,
+                    self.bias_k,
+                    self.bias_v,
+                    self.add_zero_attn,
+                    self.dropout,
+                    self.out_proj.weight,
+                    self.out_proj.bias,
+                    training=self.training,
+                    key_padding_mask=key_padding_mask,
+                    need_weights=need_weights,
+                    attn_mask=attn_mask,
+                    average_attn_weights=average_attn_weights,
+                    is_causal=is_causal,
+                )
         if self.batch_first and is_batched:
             return attn_output.transpose(1, 0), attn_output_weights
         else:
