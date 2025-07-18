@@ -326,6 +326,8 @@ class Trainer:
                                         frames_padding_mask[start:end], 
                                         embedding[start:end], 
                                         mask_embedding[start:end])
+                if self.batch_sampling:
+                    loss = loss/(n_sub_batch)
                 batch_loss += loss.detach()
         else:
             with nvtx.annotate("Val: Forward + Loss", color="blue"):

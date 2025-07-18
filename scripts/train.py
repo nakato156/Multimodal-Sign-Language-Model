@@ -53,6 +53,8 @@ def run(
     train_config["batch_sample"] = batch_sample
     train_config["compile"] = True
 
+    print(f"Batch size: {batch_size}, batch sample: {batch_sample}")
+
     tr_ds, val_ds, tr_len, val_len = prepare_datasets(h5_file, train_ratio, key_points)
     tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=10, train_length=tr_len, val_length=val_len)
 
