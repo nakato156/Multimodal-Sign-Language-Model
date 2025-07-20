@@ -23,3 +23,27 @@ def initialize():
     
     #torch._dynamo.config.assume_static_by_default = True
     #torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
+    
+def set_project_path():
+    """
+    Configura el path del proyecto para que los imports funcionen correctamente.
+    
+    Esto es necesario para que los scripts puedan importar módulos desde el directorio raíz del proyecto.
+    """
+    import os
+    import sys
+    from pathlib import Path
+    print("Setting project path")
+
+    # Define the project root directory
+    project_root = Path(__file__).resolve().parent.parent
+
+    # Add the project root to the system path
+    sys.path.append(str(project_root))
+
+    # Set the environment variable for the project path
+    os.environ["PROJECT_PATH"] = str(project_root)
+    
+    print(f"Current working directory: {Path.cwd()}")
+    
+    

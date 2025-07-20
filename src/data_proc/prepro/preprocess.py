@@ -2,31 +2,46 @@ import h5py
 import random
 from torch import as_tensor
 import torch
-
+import os
 
 # LIMPIEZA PREVIA DE DATOS
 # CENTRALIZACION DE MUESTREOS
 # ANALISIS Y DESCRIPCION DE DATOS
-"""
-Codigo para la limpieza y preprocesamiento de datos en formato HDF5.
-Usar para muestrear el dataset. 
 
-Implementado en poet
-"""
 class Preprocess:
+    """
+    Clase encargada de la limpieza y muestreo del dataset HDF5.
+    Ejecuta el preprocesamiento según los parámetros.
+        - Si sample_rate < 100: genera un subset
+        - Si sample_rate == 100: copia directo
+        - Si fix: limpia los keypoints (por defecto, obtiene los 143 keypoints)
+    
+    """
     def __init__(self, input_path, output_path, seed=42):
         self.random = random.Random(seed)
         self.input_path = input_path
         self.output_path = output_path
 
-    def run(self, sample_rate=100, replace=False):
+    def run(self, sample_rate=100, fix=False):
         """
         Ejecuta el preprocesamiento según los parámetros.
         - Si replace: limpia los keypoints
         - Si sample_rate < 100: genera un subset
         - Si sample_rate == 100: copia directo
         """
-        if replace:
+        if not os.path.exists(self.input_path):
+            raise FileNotFoundError(f"El archivo no existe {self.input_path}")
+        
+        if sample_rate < 0 or sample_rate > 100:
+            raise ValueError("sample_rate debe estar entre 0 y 100")
+        if sample_rate == 0:
+            raise ValueError("sample_rate no puede ser 0, use --fix para limpiar los keypoints")
+        
+        # revisamos que el input exista
+        
+        
+    
+        if fix:
             print("Corrigiendo +117 kp (--fix)")
             self.make_clean_h5_all_groups(
                 self.input_path,
@@ -53,6 +68,7 @@ class Preprocess:
         Crea un .hdf5 reducido tomando una fracción aleatoria de los clips por grupo.
         Procesa todos los grupos presentes (ej. dataset1, dataset2...).
         """
+        
         with h5py.File(input_path, "r") as fin, h5py.File(output_path, "w") as fout:
             group_names = list(fin.keys())
             print(f"Grupos encontrados: {group_names}")
@@ -83,7 +99,7 @@ class Preprocess:
     
             
             
-        def make_clean_h5_all_groups(input_path, output_path, clean_keypoints_fn=None):
+    def make_clean_h5_all_groups(self, input_path, output_path, clean_keypoints_fn=None):
             """
             Crea un nuevo archivo HDF5 copiando todos los grupos y clips del original,
             aplicando una función de limpieza a los keypoints.
@@ -122,19 +138,19 @@ class Preprocess:
 
 
 
-        def clean_fn(keypoints_np):
-            def fix_keypoints(keypoints):
-                assert keypoints[0].shape[1] != 117, "Se esta limpiando un dataset ya limpiado"
-                T, N, _ = keypoints.shape
-                filtered = keypoints.clone()[:, 117:, :] 
-                return filtered
-            
-            if isinstance(keypoints_np, torch.Tensor) and keypoints_np.dtype == torch.float32:
-                keypoints = keypoints_np
-            else:
-                keypoints = as_tensor(keypoints_np, dtype=torch.float32)
-            cleaned = fix_keypoints(keypoints)
-            return cleaned.numpy()
+    def fix_keypoints(keypoints):
+        assert keypoints[0].shape[1] != (250-117), "Se esta limpiando un dataset ya limpiado"
+        T, N, _ = keypoints.shape
+        filtered = keypoints.clone()[:, 117:, :] 
+        return filtered
+    
+    def clean_fn(keypoints_np):            
+        if isinstance(keypoints_np, torch.Tensor) and keypoints_np.dtype == torch.float32:
+            keypoints = keypoints_np
+        else:
+            keypoints = as_tensor(keypoints_np, dtype=torch.float32)
+        cleaned = Preprocess.fix_keypoints(keypoints)
+        return cleaned.numpy()
         
         
 

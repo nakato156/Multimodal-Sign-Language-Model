@@ -63,5 +63,5 @@ cmd = "python scripts/node_worker.py"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.preprocess]
-cmd = "python scripts/preprocess.py --input_path data/raw/datasetv1.hdf5 --replace --sample_rate 30"
+cmd = "python scripts/preprocess.py --input_path ../data/raw/datasetv1.hdf5 --sample_rate 30"
 env = { PYTHONPATH = "." }
