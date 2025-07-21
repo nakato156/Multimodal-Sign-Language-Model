@@ -31,4 +31,9 @@ def collate_fn(batch):
     frames_mask     = arange_frames >= frame_lengths.unsqueeze(1)  # True = frame padding
     embeddings_mask = arange_tokens >= token_lengths.unsqueeze(1)  # True = token padding
 
-    return keypoints_padded, frames_mask, embeddings_padded, embeddings_mask
+    keypoints_padded = keypoints_padded.to(torch.float32)
+    keypoints_mask = frames_mask.to(torch.bool)
+    embeddings_padded = embeddings_padded.to(torch.float32)
+    embeddings_mask = embeddings_mask.to(torch.bool)
+
+    return keypoints_padded, keypoints_mask, embeddings_padded, embeddings_mask

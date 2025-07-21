@@ -41,10 +41,10 @@ class KeypointDataset(Dataset):
         self.data_augmentation = data_augmentation
     
         self.data_augmentation_dict = {
-            0: "Length_variance",
-            1: "Gaussian_jitter",
-            2: "Rotation_2D",
-            4: "Scaling"
+        #    0: "Length_variance",
+        #    1: "Gaussian_jitter",
+        #    2: "Rotation_2D",
+        #    4: "Scaling"
         }
 
         self.dataset_length = 0
@@ -59,6 +59,9 @@ class KeypointDataset(Dataset):
             self.original_videos = []
 
             for dataset in datasets:
+                if dataset not in ["dataset1", "dataset3", "dataset5", "dataset7"]:
+                    continue
+
                 clip_ids  = list(f[dataset]["embeddings"].keys())
 
                 for clip in clip_ids:

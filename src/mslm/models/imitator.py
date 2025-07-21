@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from .components import TransformerEncoderLayerRoPE
-import torch.utils.checkpoint as checkpoint
+from torch.utils.checkpoint import checkpoint
 
 class Imitator(nn.Module):
     def __init__(
@@ -54,8 +54,8 @@ class Imitator(nn.Module):
             d_model=hidden_size,
             nhead=nhead,
             dim_feedforward=ff_dim,
-            batch_first=True,
             dropout=0.4,
+            batch_first=True,
             norm_first=True
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)

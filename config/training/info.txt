@@ -1,0 +1,3 @@
+Version90 = Cosine Embdding Loss
+Version91 = Cosine Embdding Loss with reduce dataset: "dataset1", "dataset3", "dataset5", "dataset7"
+Version92 = Return of MSE
