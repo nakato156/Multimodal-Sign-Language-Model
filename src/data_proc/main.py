@@ -34,55 +34,62 @@ def save_embeddings(hdf5Group, videoFolderPath):
     group = hdf5Group.require_group("embeddings")
     videoList = sorted(os.listdir(videoFolderPath))
 
-    print("Embeddings: ", len(videoList))
-    for video_idx, videoName  in enumerate(videoList):
-        print(video_idx)
-
-        if str(video_idx) in group:
-            continue
-
+    for video_idx, videoName in enumerate(videoList):
+        key = str(video_idx)
         name, _ = os.path.splitext(videoName)
 
-        if not metaDF.loc[metaDF["id"]==name].shape[0] == 1:
+        if metaDF.loc[metaDF["id"] == name].shape[0] != 1:
             continue
 
-        label = metaDF.loc[metaDF["id"]==name]["label"].values[0]
-        print(label)
-        embedding = llm.run(label)
-        embedding = embedding.cpu().numpy()
+        # Compute new embedding
+        label = metaDF.loc[metaDF["id"] == name, "label"].values[0]
+        embedding = llm.run(label.lower()).cpu().numpy()
 
-        group.create_dataset(str(video_idx), data=embedding, compression="gzip", compression_opts=4)
+        # If it exists, delete old dataset first
+        if key in group:
+            del group[key]
+
+        # Then write new data
+        group.create_dataset(
+            key,
+            data=embedding,
+            compression="gzip",
+            compression_opts=4
+        )
 
 def save_labels(hdf5Group, videoFolderPath):
     group = hdf5Group.require_group("labels")
     videoList = sorted(os.listdir(videoFolderPath))
 
-    print("labels: ", len(videoList))
-    for video_idx, videoName  in enumerate(videoList):
-        print(video_idx)
-        
-        if str(video_idx) in group:
-            continue
-
+    for video_idx, videoName in enumerate(videoList):
+        key = str(video_idx)
         name, _ = os.path.splitext(videoName)
 
-        if not metaDF.loc[metaDF["id"]==name].shape[0] == 1:
+        # Skip if no matching metadata
+        if metaDF.loc[metaDF["id"] == name].shape[0] != 1:
             continue
 
-        label = metaDF.loc[metaDF["id"]==name]["label"].values[0]
-
+        # Compute new label
+        label = metaDF.loc[metaDF["id"] == name, "label"].values[0].lower()
         dt = h5py.string_dtype(encoding='utf-8')
-        group.create_dataset(str(video_idx), data=[label], dtype=dt, compression="gzip")
+
+        # If it exists, delete the old dataset
+        if key in group:
+            del group[key]
+
+        # Then create it anew
+        group.create_dataset(key, data=[label], dtype=dt, compression="gzip")
 
 if __name__ == "__main__":
     dataPath = os.path.join(main_directory, "data")
     keypoint_tool = KeypointProcessing()
     llm = LLM(main_directory)
-    f = h5py.File(os.path.join(dataPath, "dataset.hdf5"), 'a')
+    f = h5py.File(os.path.join(dataPath, "processed", "dataset_v3.hdf5"), 'r+')
 
-    for Folder in os.listdir(dataPath):
+    videosPath = os.path.join(main_directory, "data", "raw")
+    for Folder in os.listdir(videosPath):
         print(Folder)
-        folderPath = os.path.join(dataPath, Folder)
+        folderPath = os.path.join(videosPath, Folder)
 
         if not os.path.isdir(folderPath):
             continue 
@@ -95,10 +102,10 @@ if __name__ == "__main__":
         videoFolderPath = os.path.join(folderPath, "videos")
         metaDF = pd.read_csv(os.path.join(folderPath, "meta.csv"))
 
-        keypoint_tool.load_model()        
-        save_keypoints(group, videoFolderPath)
-        f.flush()
-        keypoint_tool.unload_model()        
+        #keypoint_tool.load_model()        
+        #save_keypoints(group, videoFolderPath)
+        #f.flush()
+        #keypoint_tool.unload_model()        
 
         llm.load_model()
         save_embeddings(group, videoFolderPath)
