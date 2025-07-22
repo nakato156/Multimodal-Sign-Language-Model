@@ -78,7 +78,7 @@ class Trainer:
         self.batch_size = kwargs.get("batch_size", 5)
         self.batch_sampling = kwargs.get("batch_sampling", True)
         if self.batch_sampling:
-            self.sub_batch = kwargs.get("sub_batch_size", 4)
+            self.sub_batch = kwargs.get("batch_sample", 4)
 
         #Options 
         self.prof = False

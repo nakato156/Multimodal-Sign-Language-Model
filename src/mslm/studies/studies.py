@@ -34,7 +34,11 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
     ff_dim        = trial.suggest_int("ff_dim", 1024, 3072, step=256)
     n_layers      = trial.suggest_categorical("n_layers",    [10, 12])
     learning_rate = trial.suggest_float("lr", 1e-4, 1e-3, log=True)
+    encoder_dropout = trial.suggest_float("encoder_dropout", 0.1, 0.6, step=0.05)
+    multihead_dropout = trial.suggest_float("multihead_dropout", 0.1, 0.6, step=0.05)
+    sequential_dropout = trial.suggest_float("sequential_dropout", 0.1, 0.6, step=0.05)
     print(f"Hidden Size: {hidden_size}, Nhead: {nhead}, FF Dim: {ff_dim}, N Layers: {n_layers}, Learning Rate: {learning_rate}")
+    print(f"Encoder Dropout: {encoder_dropout}, Multihead Dropout: {multihead_dropout}, Sequential Dropout: {sequential_dropout}")
     train_config["learning_rate"] = learning_rate
 
     early_stopping = EarlyStopping(patience=100)
@@ -46,10 +50,13 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
         nhead=nhead,
         ff_dim=ff_dim,
         n_layers=n_layers,
-        max_seq_length=301
+        max_seq_length=301,
+        encoder_dropout=encoder_dropout,
+        multihead_dropout=multihead_dropout,
+        sequential_dropout=sequential_dropout
     )
 
-    trainer = Trainer(model, train_dataloader, val_dataloader, compile=compile, batch_sampling=True, save_tb_model=False, **train_config)
+    trainer = Trainer(model, train_dataloader, val_dataloader,save_tb_model=False , **train_config)
 
     trainer.optimizer = AdamW(
         trainer.model.parameters(), 

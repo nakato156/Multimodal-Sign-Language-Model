@@ -21,20 +21,5 @@ nsys profile \
   --gpu-metrics-set=ad10x \
   --gpu-metrics-frequency=10000 \
   --enable=nvml_metrics,-i100 \
-  python -m poe profile_nvidia --epochs 1 --batch_size 2
-    
-#ncu \
-#    --target-processes all \
-#    --set full \
-#    --nvtx \
-#    --nvtx-merge true \
-#    --nvtx-range model_forward \
-#  -o ../outputs/profile/ncu_profile_$(date +%Y%m%d_%H%M%S) \
-#  poe profile_nvidia
-
-#echo "Pytorch profiling has started"
-#sudo env \
-#    PATH="/home/giorgio6846/Code/Sign-AI/Sign-Multimodal-Language-Model/.conda/bin:$PATH" \
-#    LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
-#    poe profile_pytorch
-#echo "Pytorch profiling has finished"
+  --cuda-event-trace=true \
+  poe profile_nvidia

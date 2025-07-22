@@ -66,9 +66,9 @@ if __name__ == "__main__":
     parser.add_argument("--batch_sample", type=int, default=8, help="Batch sample for training.")
     parser.add_argument("--checkpoint_interval", type=int, default=5, help="Interval for saving checkpoints.")
     parser.add_argument("--log_interval", type=int, default=2, help="Interval for logging training progress.")
-    parser.add_argument("--num_keypoints", type=int, default=230, help="Number of keypoints to use in the model.")
+    parser.add_argument("--num_keypoints", type=int, default=113, help="Number of keypoints to use in the model.")
     parser.add_argument("--batch_sampling", type=bool, default=False, help="Enables batch sampling for training.")
     parser.add_argument("--profile_mode", type=str, default="nvidia", help="Mode for profiling.")
     args = parser.parse_args()
 
-    run(args.epochs, args.batch_size, args.batch_sample, args.checkpoint_interval, args.log_interval, args.num_keypoints, args.batch_sampling, args.profile_mode)
+    run(args.epochs, args.batch_size, args.batch_sample, args.checkpoint_interval, args.log_interval, args.batch_sampling, args.num_keypoints, args.profile_mode)

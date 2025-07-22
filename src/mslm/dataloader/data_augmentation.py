@@ -104,7 +104,7 @@ def filter_unstable_keypoints_to_num(keypoints, keep_n):
 
     return filtered, stable_mask
 
-def normalize_augment_data(keypoint, augmentation_type, n_keypoints = 245):
+def normalize_augment_data(keypoint, augmentation_type, n_keypoints = 133):
     #Keypoints a Tensor
     if not isinstance(keypoint, torch.Tensor):
         keypoint = torch.as_tensor(keypoint)    

@@ -48,7 +48,7 @@ def run(
     if batch_sampling:
         if batch_size%batch_sample != 0 or batch_size < batch_sample:
             raise ValueError(f"The sub_batch {batch_sample} needs to be divisible the batch size {batch_size}")
-    
+
     train_config["batch_sampling"] = batch_sampling
     train_config["batch_sample"] = batch_sample
     train_config["compile"] = True

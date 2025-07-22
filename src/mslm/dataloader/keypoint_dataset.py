@@ -4,7 +4,7 @@ from torch.utils.data import random_split, Dataset, Subset, ConcatDataset
 from .data_augmentation import normalize_augment_data
 
 class TransformedSubset(Dataset):
-    def __init__(self, subset: Subset, transform_fn: str, return_label=False, video_lengths=[], n_keypoints=245):
+    def __init__(self, subset: Subset, transform_fn: str, return_label=False, video_lengths=[], n_keypoints=133):
         self.subset    = subset
         self.transform = transform_fn
         self.return_label = return_label
@@ -41,10 +41,10 @@ class KeypointDataset(Dataset):
         self.data_augmentation = data_augmentation
     
         self.data_augmentation_dict = {
-        #    0: "Length_variance",
-        #    1: "Gaussian_jitter",
-        #    2: "Rotation_2D",
-        #    4: "Scaling"
+            0: "Length_variance",
+            1: "Gaussian_jitter",
+            2: "Rotation_2D",
+            4: "Scaling"
         }
 
         self.dataset_length = 0

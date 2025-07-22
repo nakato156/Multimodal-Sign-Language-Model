@@ -13,28 +13,10 @@ mkdir -p ../outputs/profile
 timestamp=$(date +"%Y%m%d_%H%M%S")
 
 echo "NVIDIA profiling has started"
-# Run Poe task with nsys profiling
-nsys profile \
-  --output="../outputs/profile/nsys_profile_$(date +%Y%m%d_%H%M%S).qdrep" \
-  --trace=cuda,osrt,nvtx \
-  --gpu-metrics-devices=0 \
-  --gpu-metrics-set=ad10x \
-  --gpu-metrics-frequency=10000 \
-  --enable=nvml_metrics,-i100 \
-  python -m poe profile_nvidia --epochs 1 --batch_size 2
-    
-#ncu \
-#    --target-processes all \
-#    --set full \
-#    --nvtx \
-#    --nvtx-merge true \
-#    --nvtx-range model_forward \
-#  -o ../outputs/profile/ncu_profile_$(date +%Y%m%d_%H%M%S) \
-#  poe profile_nvidia
-
-#echo "Pytorch profiling has started"
-#sudo env \
-#    PATH="/home/giorgio6846/Code/Sign-AI/Sign-Multimodal-Language-Model/.conda/bin:$PATH" \
-#    LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
-#    poe profile_pytorch
-#echo "Pytorch profiling has finished"
+# Run Poe task with nsys profiling   
+ncu \
+    --target-processes all \
+    --set full \
+    --nvtx \
+  -o ../outputs/profile/ncu_profile_$(date +%Y%m%d_%H%M%S) \
+  poe profile_nvidia

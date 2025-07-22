@@ -13,6 +13,9 @@ class Imitator(nn.Module):
         ff_dim: int = 1024,
         n_layers: int = 2,
         max_seq_length: int = 301,
+        encoder_dropout: int = 0.4,
+        multihead_dropout: int = 0.1,
+        sequential_dropout: int = 0.1
     ):
         super().__init__()
 
@@ -23,7 +26,10 @@ class Imitator(nn.Module):
             "nhead": nhead,
             "ff_dim": ff_dim,
             "n_layers": n_layers,
-            "max_seq_length": max_seq_length
+            "max_seq_length": max_seq_length,
+            "encoder_dropout": encoder_dropout,
+            "multihead_dropout": multihead_dropout,
+            "sequential_dropout": sequential_dropout,
         }
 
         # --- Bloque de entrada ---
@@ -54,7 +60,7 @@ class Imitator(nn.Module):
             d_model=hidden_size,
             nhead=nhead,
             dim_feedforward=ff_dim,
-            dropout=0.4,
+            dropout=encoder_dropout,
             batch_first=True,
             norm_first=True
         )
@@ -68,7 +74,7 @@ class Imitator(nn.Module):
         self.cross_attn = nn.MultiheadAttention(
             embed_dim=output_size,
             num_heads=nhead,
-            dropout=0.1,
+            dropout=multihead_dropout,
             batch_first=True,
         )
 
@@ -77,7 +83,7 @@ class Imitator(nn.Module):
         self.proj_final = nn.Sequential(
             nn.Linear(output_size, output_size * 2),
             nn.GELU(),
-            nn.Dropout(0.1),
+            nn.Dropout(sequential_dropout),
             nn.Linear(output_size * 2, output_size)
         )
 
