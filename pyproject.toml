@@ -39,7 +39,7 @@ cmd = "python scripts/finetuning.py --epochs 10"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.study]
-cmd = "python scripts/make_study.py --n_trials 15 --batch_size 128 --batch_sample 8 --epochs 25"
+cmd = "python scripts/make_study.py --n_trials 15 --batch_size 64 --batch_sample 4 --epochs 25"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.embed]

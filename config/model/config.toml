@@ -1,5 +1,8 @@
 output_size= 3072
 hidden_size= 2048
-nhead= 8
-ff_dim= 1024
-n_layers= 6
+nhead= 32
+ff_dim= 1792
+n_layers= 10
+encoder_dropout = 0.2
+multihead_dropout = 0.55
+sequential_dropout = 0.45

@@ -32,6 +32,8 @@ class Imitator(nn.Module):
             "sequential_dropout": sequential_dropout,
         }
 
+        print(self.cfg)
+
         # --- Bloque de entrada ---
 
         self.linear_feat = nn.Sequential(
