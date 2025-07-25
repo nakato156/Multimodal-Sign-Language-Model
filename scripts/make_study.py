@@ -35,21 +35,24 @@ def run(
     train_config = ConfigLoader("config/training/train_config.toml").load_config()
     train_ratio = train_config.get("train_ratio", train_ratio)
     train_config.update({
+        "learning_rate": train_config.get("learning_rate", 0.00238),
         "epochs": epochs if epochs else train_config.get("epochs", 100),
         "batch_size": batch_size if batch_size else train_config.get("batch_size", 32),
         "batch_sample": batch_sample if batch_sample else train_config.get("sub_batch_size", 32),
-        "checkpoint_interval": train_config.get("checkpoint_interval", 5),
-        "log_interval": train_config.get("log_interval", 2),
         "train_ratio": train_ratio,
         "validation_ratio": round(1 - train_ratio, 2),
         "device": device if model_parameters.get("device") == "auto" else model_parameters.get("device", device),
     })
 
+    train_config["batch_sampling"] = batch_sampling
+    train_config["batch_sample"] = batch_sample
+    train_config["compile"] = True
+
     if batch_sampling:
         if batch_size%batch_sample != 0 or batch_size < batch_sample:
             raise ValueError(f"The sub_batch {batch_sample} needs to be divisible the batch size {batch_size}")
 
-    print(f"Running study with batch size {batch_size}, sub batch size {sub_batch_sample}")
+    print(f"Running study with batch size {batch_size}, sub batch size {batch_sample}")
 
     # datasets
     tr_ds, val_ds, tr_len, val_len = prepare_datasets(h5_file, train_ratio, 133)
@@ -84,7 +87,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training.")
     parser.add_argument("--batch_sample", type=int, default=8, help="Batch size for training.")
     parser.add_argument("--train_ratio", type=float, default=0.8, help="Ratio of training data.")
-    parser.add_argument("--batch_sampling", type=bool, default=False, help="Enables batch sampling for training.")
+    parser.add_argument("--batch_sampling", type=bool, default=True, help="Enables batch sampling for training.")
     args = parser.parse_args()
 
     print(f"Running study with {args.n_trials} trials, batch size {args.batch_size}, train ratio {args.train_ratio}")

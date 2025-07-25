@@ -26,7 +26,7 @@ def setup_paths():
 
 def prepare_datasets(h5File, train_ratio, n_keypoints=112):
     """Carga el dataset base, lo envuelve y lo divide en entrenamiento y validación."""
-    keypoint_reader = KeypointDataset(h5Path=h5File, return_label=False, n_keypoints=n_keypoints, data_augmentation=True, max_length=4000)
+    keypoint_reader = KeypointDataset(h5Path=h5File, return_label=False, n_keypoints=n_keypoints, data_augmentation=False, max_length=4000)
     train_dataset, validation_dataset, train_length, val_length = keypoint_reader.split_dataset(train_ratio)
 
     print(f"Train size:\t{len(train_dataset)}\nValidation size:\t{len(validation_dataset)}")
@@ -81,14 +81,14 @@ def build_model(input_size, output_size, **kwargs):
 
 def run_training(params, train_dataloader, val_dataloader, model):
     """Configura y ejecuta el entrenamiento."""
-    trainer = Trainer(model, train_dataloader, val_dataloader, **params)
+    trainer = Trainer(model, train_dataloader, val_dataloader,save_tb_model=False , **params)
     trainer.ckpt_mgr.save_params(params)
 
     print("Starting training...")
     return trainer.train()
 
 def profile_training(params, train_dataloader, val_dataloader, model, profile_mode: str):
-    trainer = Trainer(model, train_dataloader, val_dataloader, **params)
+    trainer = Trainer(model, train_dataloader, val_dataloader,save_tb_model=False, **params)
     trainer.ckpt_mgr.save_params(params)
 
     if profile_mode == "nvidia":
@@ -118,13 +118,12 @@ def profile_training(params, train_dataloader, val_dataloader, model, profile_mo
             p.export_chrome_trace(f"{file_path}.json.gz")
             p.export_stacks(f"{file_path}_stacks.txt", "self_cpu_time_total")
             p.export_memory_profile(f"{file_path}_memory.txt")
-
     else:
         raise ValueError("Unsupported profiling mode. Use 'nvidia' or 'pytorch'.")
 
 def run_dt_training(params, train_dataloader, val_dataloader, model, rank, channel, dist, stub):
     """Configura y ejecuta el entrenamiento."""
-    trainer = Trainer(model, train_dataloader, val_dataloader, **params)
+    trainer = Trainer(model, train_dataloader, val_dataloader,save_tb_model=False, **params)
     trainer.ckpt_mgr.save_params(params)
 
     print("Starting training...")

@@ -48,13 +48,15 @@ def run(
     if batch_sampling:
         if batch_size%batch_sample != 0 or batch_size < batch_sample:
             raise ValueError(f"The sub_batch {batch_sample} needs to be divisible the batch size {batch_size}")
-    
+
     train_config["batch_sampling"] = batch_sampling
     train_config["batch_sample"] = batch_sample
     train_config["compile"] = True
 
+    print(f"Batch size: {batch_size}, batch sample: {batch_sample}")
+
     tr_ds, val_ds, tr_len, val_len = prepare_datasets(h5_file, train_ratio, key_points)
-    tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=6, train_length=tr_len, val_length=val_len)
+    tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=10, train_length=tr_len, val_length=val_len)
 
     model = build_model(**model_parameters)
     run_training(train_config, tr_dl, val_dl, model)
