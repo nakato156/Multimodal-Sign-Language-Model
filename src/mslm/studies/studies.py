@@ -29,19 +29,24 @@ def lr_objetive(trial, train_dataloader, val_dataloader, **params):
     return val_loss
 
 def complete_objective(trial, train_dataloader, val_dataloader, model_params, train_config):
-    hidden_size   = trial.suggest_categorical("hidden_size", [1024, 2048])
-    nhead         = trial.suggest_categorical("nhead",       [8, 16, 32])
+    hidden_size   = trial.suggest_int("hidden_size", 1024, 2048, step=256)
+    nhead         = trial.suggest_categorical("nhead", [8, 16, 32])
     ff_dim        = trial.suggest_int("ff_dim", 1024, 3072, step=256)
-    n_layers      = trial.suggest_categorical("n_layers",    [10, 12])
-    learning_rate = trial.suggest_float("lr", 1e-4, 1e-3, log=True)
+    n_layers      = trial.suggest_categorical("n_layers", [8, 10, 12])
+    learning_rate = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
     encoder_dropout = trial.suggest_float("encoder_dropout", 0.1, 0.6, step=0.05)
     multihead_dropout = trial.suggest_float("multihead_dropout", 0.1, 0.6, step=0.05)
+    pool_dim      = trial.suggest_categorical("pool_dim", [128, 256, 512])
     sequential_dropout = trial.suggest_float("sequential_dropout", 0.1, 0.6, step=0.05)
+    weight_decay  = trial.suggest_float("weight_decay", 0.0, 0.1, step=0.01)
+    grad_clip    = trial.suggest_float("grad_clip", 0.1, 5.0, step=0.1)
+
     print(f"Hidden Size: {hidden_size}, Nhead: {nhead}, FF Dim: {ff_dim}, N Layers: {n_layers}, Learning Rate: {learning_rate}")
     print(f"Encoder Dropout: {encoder_dropout}, Multihead Dropout: {multihead_dropout}, Sequential Dropout: {sequential_dropout}")
     train_config["learning_rate"] = learning_rate
+    train_config["grad_clip"] = grad_clip
 
-    early_stopping = EarlyStopping(patience=100)
+    early_stopping = EarlyStopping(patience=5)
 
     model = Imitator(
         input_size=model_params["input_size"],
@@ -50,6 +55,7 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
         nhead=nhead,
         ff_dim=ff_dim,
         n_layers=n_layers,
+        pool_dim=pool_dim,
         max_seq_length=301,
         encoder_dropout=encoder_dropout,
         multihead_dropout=multihead_dropout,
@@ -61,7 +67,7 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
     trainer.optimizer = AdamW(
         trainer.model.parameters(), 
         lr=trainer.learning_rate, 
-        weight_decay=1e-3,
+        weight_decay=weight_decay,
         foreach=True
     )
 

@@ -47,7 +47,7 @@ class PathVariables:
         # Datos
         dp = bp.parent / "data"
         self.data_path = dp
-        self.h5_file = dp / "processed" / "dataset_v2.hdf5"
+        self.h5_file = dp / "processed" / "dataset_v4.hdf5"
         #self.h5_file = dp / "dataset_clean_clean.hdf5"
         #self.h5_file = dp / "dataset_small_clean25.hdf5"
         #self.h5_file = dp / "dataset_small5_clean.hdf5"
