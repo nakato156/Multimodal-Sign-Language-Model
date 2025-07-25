@@ -12,7 +12,7 @@ class Imitator(nn.Module):
         nhead: int = 8,
         ff_dim: int = 1024,
         n_layers: int = 2,
-        max_seq_length: int = 301,
+        max_seq_length: int = 30,
         encoder_dropout: int = 0.4,
         multihead_dropout: int = 0.1,
         sequential_dropout: int = 0.1

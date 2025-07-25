@@ -43,7 +43,9 @@ def save_embeddings(hdf5Group, videoFolderPath):
 
         # Compute new embedding
         label = metaDF.loc[metaDF["id"] == name, "label"].values[0]
-        embedding = llm.run(label.lower()).cpu().numpy()
+        embedding = llm.run(label.lower())
+        embedding_cpu = embedding.detach().cpu().numpy()
+
 
         # If it exists, delete old dataset first
         if key in group:
@@ -52,7 +54,7 @@ def save_embeddings(hdf5Group, videoFolderPath):
         # Then write new data
         group.create_dataset(
             key,
-            data=embedding,
+            data=embedding_cpu,
             compression="gzip",
             compression_opts=4
         )
@@ -62,6 +64,10 @@ def save_labels(hdf5Group, videoFolderPath):
     videoList = sorted(os.listdir(videoFolderPath))
 
     for video_idx, videoName in enumerate(videoList):
+        
+        if str(video_idx) in group:
+            continue
+        
         key = str(video_idx)
         name, _ = os.path.splitext(videoName)
 
@@ -73,10 +79,6 @@ def save_labels(hdf5Group, videoFolderPath):
         label = metaDF.loc[metaDF["id"] == name, "label"].values[0].lower()
         dt = h5py.string_dtype(encoding='utf-8')
 
-        # If it exists, delete the old dataset
-        if key in group:
-            del group[key]
-
         # Then create it anew
         group.create_dataset(key, data=[label], dtype=dt, compression="gzip")
 
@@ -84,7 +86,7 @@ if __name__ == "__main__":
     dataPath = os.path.join(main_directory, "data")
     keypoint_tool = KeypointProcessing()
     llm = LLM(main_directory)
-    f = h5py.File(os.path.join(dataPath, "processed", "dataset_v3.hdf5"), 'r+')
+    f = h5py.File(os.path.join(dataPath, "processed", "dataset_v4.hdf5"), 'r+')
 
     videosPath = os.path.join(main_directory, "data", "raw")
     for Folder in os.listdir(videosPath):

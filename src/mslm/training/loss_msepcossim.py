@@ -25,9 +25,13 @@ def imitator_loss(pred_embs: torch.Tensor, target_embs: torch.Tensor, embedding_
     masked_loss_mse = (mse_per_token * valid).sum() / valid.sum()
 
     # Compute the Cosine Similarity Loss
-    loss_cossim = 1 - F.cosine_similarity(pred_embs, target_embs, dim=-1)
+    pred_norm = F.normalize(pred_embs, dim=-1)
+    target_norm = F.normalize(target_embs, dim=-1)
+
+    loss_cossim = 1 - F.cosine_similarity(pred_norm, target_norm, dim=-1)
     masked_loss_cossim = (loss_cossim * valid).sum() / valid.sum()
+    # print(f"mse loss: {masked_loss_mse}, cossim loss: {masked_loss_cossim}")
 
-    loss_total = 0.4 * masked_loss_cossim + 0.6 * masked_loss_mse
+    loss_total = masked_loss_mse + 2.7 * masked_loss_cossim
 
-    return loss_total
+    return loss_total, masked_loss_mse, masked_loss_cossim
