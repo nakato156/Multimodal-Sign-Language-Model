@@ -15,7 +15,8 @@ class Imitator(nn.Module):
         max_seq_length: int = 30,
         encoder_dropout: int = 0.4,
         multihead_dropout: int = 0.1,
-        sequential_dropout: int = 0.1
+        sequential_dropout: int = 0.1,
+        pool_dim: int = 256,
     ):
         super().__init__()
 
@@ -27,6 +28,7 @@ class Imitator(nn.Module):
             "ff_dim": ff_dim,
             "n_layers": n_layers,
             "max_seq_length": max_seq_length,
+            "pool_dim": pool_dim,
             "encoder_dropout": encoder_dropout,
             "multihead_dropout": multihead_dropout,
             "sequential_dropout": sequential_dropout,
@@ -45,7 +47,7 @@ class Imitator(nn.Module):
             nn.LayerNorm(hidden_size // 2)
         )
 
-        pool_dim = 256
+        #pool_dim = 256
         # linear sequencer
         self.conv1  = nn.Conv1d(hidden_size//2, pool_dim, kernel_size=3, padding=1)
         self.ln1    = nn.LayerNorm(pool_dim)

@@ -85,6 +85,8 @@ class Trainer:
         #Options 
         self.prof = False
         self.distributed = None
+        
+        self.grad_clip = kwargs.get("grad_clip", 0.1)
 
     def prepare_optimizer_scheduler(self):
         self.optimizer = self.accelerator.prepare_optimizer(self.optimizer)
@@ -282,7 +284,7 @@ class Trainer:
                         batch_loss += loss.detach()
                         
             with nvtx.annotate("Step", color="blue"):
-                    self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                    self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=self.grad_clip)
                     self.optimizer.step()
 
         return batch_loss
