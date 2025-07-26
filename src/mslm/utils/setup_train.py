@@ -81,6 +81,8 @@ def build_model(input_size, output_size, **kwargs):
 
 def run_training(params, train_dataloader, val_dataloader, model):
     """Configura y ejecuta el entrenamiento."""
+    print("Training Parameters: ", params)
+
     trainer = Trainer(model, train_dataloader, val_dataloader,save_tb_model=False , **params)
     trainer.ckpt_mgr.save_params(params)
 
