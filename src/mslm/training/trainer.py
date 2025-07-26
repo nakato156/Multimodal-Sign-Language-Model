@@ -87,6 +87,7 @@ class Trainer:
         self.distributed = None
         
         self.grad_clip = kwargs.get("grad_clip", 0.1)
+        self.weight_decay = kwargs.get("weight_decay", 0.05)
 
     def prepare_optimizer_scheduler(self):
         self.optimizer = self.accelerator.prepare_optimizer(self.optimizer)
@@ -103,7 +104,7 @@ class Trainer:
         self.optimizer = AdamW(
             self.model.parameters(), 
             lr=self.learning_rate, 
-            weight_decay=1e-3,
+            weight_decay=self.weight_decay,
             foreach=True
         )
         

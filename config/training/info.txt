@@ -4,3 +4,4 @@ Version92 = Return of MSE Epoch24 Loss/Val: 1.19/1.17
 Version93 = Enabled Data Augmentation 
 Version94 = Disabled Data Augmentation due to no changes in val or train loss 
 Version95 = Study for best hyperparameters for the model
+Version100 = New hyperparameters with new dataset from HuggingFace Transformers GGUF
