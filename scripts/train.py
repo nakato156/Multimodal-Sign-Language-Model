@@ -51,7 +51,7 @@ def run(
 
     train_config["batch_sampling"] = batch_sampling
     train_config["batch_sample"] = batch_sample
-    train_config["compile"] = True
+    train_config["compile"] = False
 
     print(f"Batch size: {batch_size}, batch sample: {batch_sample}")
 

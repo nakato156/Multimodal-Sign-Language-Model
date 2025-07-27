@@ -40,7 +40,8 @@ class Trainer:
         #Loggers
         self.log_interval = kwargs.get("log_interval", 5)
         self.save_tb_model = save_tb_model
-        version = kwargs.get("version", "")
+
+        version = kwargs.get("model_version", "")
         self.writer = SummaryWriter(f"../outputs/reports/{version}/{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}")
         self.graph_added = False
         
@@ -231,8 +232,8 @@ class Trainer:
                 cossim_loss += cossim
                 
         final_train_loss = total_loss.item()/len(self.train_loader)
-        final_train_loss_mse = total_loss.item()/len(self.train_loader)
-        final_train_loss_cossim = total_loss.item()/len(self.train_loader)
+        final_train_loss_mse = mse_loss.item()/len(self.train_loader)
+        final_train_loss_cossim = cossim_loss.item()/len(self.train_loader)
 
         self.writer.add_scalar("Loss/train", final_train_loss, epoch)
         self.writer.add_scalar("Loss/train_mse", final_train_loss_mse, epoch)
