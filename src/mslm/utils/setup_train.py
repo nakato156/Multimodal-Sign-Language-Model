@@ -1,6 +1,8 @@
+from multiprocessing import Value
 import os
 import torch
 import random
+from io import StringIO
 
 torch.manual_seed(23)
 random.seed(23)
@@ -79,12 +81,49 @@ def build_model(input_size, output_size, **kwargs):
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
     return model
 
+def check_checkpoint(model, params):
+    """
+    Verifica que el checkpoint pedido sea válido.
+    """
+    checkpoint = int(params["checkpoint"])
+    version   = str(params["model_version"])
+
+    root      = os.path.join(path_vars._base_path.parent / "outputs" / "checkpoints", version)
+
+    if checkpoint == 1:
+        return False
+
+    cp_path = os.path.join(root, str(checkpoint))
+    if os.path.exists(cp_path):
+        raise ValueError(f"El checkpoint {checkpoint} ya existe en {cp_path!r}.")
+
+    prev_path = os.path.join(root, str(checkpoint - 1))
+    if not os.path.exists(prev_path):
+        raise ValueError(f"Checkpoint anterior {checkpoint-1} no encontrado en {prev_path!r}.")
+
+    arch_file = os.path.join(root, str(1), "model_architecture.txt")
+    if not os.path.isfile(arch_file):
+        raise FileNotFoundError(f"No se encontró {arch_file!r}.")
+
+    with open(arch_file, "r") as f:
+        saved_arch = f.read()
+
+    buf = StringIO()
+    print(model, file=buf)
+    current_arch = buf.getvalue()
+
+    if saved_arch != current_arch:
+        raise ValueError("La arquitectura del modelo no coincide con la guardada.")
+    
+    return True
+
 def run_training(params, train_dataloader, val_dataloader, model):
     """Configura y ejecuta el entrenamiento."""
     print("Training Parameters: ", params)
 
     trainer = Trainer(model, train_dataloader, val_dataloader,save_tb_model=False , **params)
     trainer.ckpt_mgr.save_params(params)
+    trainer.ckpt_mgr.save_model_architecture(model)
 
     print("Starting training...")
     return trainer.train()
@@ -92,6 +131,7 @@ def run_training(params, train_dataloader, val_dataloader, model):
 def profile_training(params, train_dataloader, val_dataloader, model, profile_mode: str):
     trainer = Trainer(model, train_dataloader, val_dataloader,save_tb_model=False, **params)
     trainer.ckpt_mgr.save_params(params)
+    trainer.ckpt_mgr.save_model_architecture(model)
 
     if profile_mode == "nvidia":
         print("Starting training with profiling nvidia...")
@@ -123,10 +163,11 @@ def profile_training(params, train_dataloader, val_dataloader, model, profile_mo
     else:
         raise ValueError("Unsupported profiling mode. Use 'nvidia' or 'pytorch'.")
 
-def run_dt_training(params, train_dataloader, val_dataloader, model, rank, channel, dist, stub):
-    """Configura y ejecuta el entrenamiento."""
-    trainer = Trainer(model, train_dataloader, val_dataloader,save_tb_model=False, **params)
-    trainer.ckpt_mgr.save_params(params)
+    def run_dt_training(params, train_dataloader, val_dataloader, model, rank, channel, dist, stub):
+        """Configura y ejecuta el entrenamiento."""
+        trainer = Trainer(model, train_dataloader, val_dataloader,save_tb_model=False, **params)
+        trainer.ckpt_mgr.save_params(params)
+        trainer.ckpt_mgr.save_model_architecture(model)
 
-    print("Starting training...")
-    return trainer.train_dist(rank, channel, dist, stub)
+        print("Starting training...")
+        return trainer.train_dist(rank, channel, dist, stub)

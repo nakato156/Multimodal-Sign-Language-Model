@@ -41,16 +41,18 @@ class Trainer:
         self.log_interval = kwargs.get("log_interval", 5)
         self.save_tb_model = save_tb_model
 
-        version = kwargs.get("model_version", "")
-        self.writer = SummaryWriter(f"../outputs/reports/{version}/{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}")
+        version = kwargs.get("model_version", 1)
+        checkpoint = kwargs.get("checkpoint", 1)
+
+        self.writer = SummaryWriter(f"../outputs/reports/{version}/{checkpoint}/{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}")
         self.graph_added = False
         
         #Save and checkpoint
         self.checkpoint_interval = kwargs.get("checkpoint_interval", 5)
         self.ckpt_mgr = CheckpointManager(
             kwargs.get("model_dir", "../outputs/checkpoints"),
-            kwargs.get("model_version", 1),
-            kwargs.get("checkpoint", 0),
+            version,
+            checkpoint,
         )
 
         #Loss Function
@@ -65,7 +67,8 @@ class Trainer:
             self.criterion = imitator_loss
 
         #Model
-        self.model = self.accelerator.prepare_model(model)
+        self.model = model
+        self.load_previous_model = kwargs.get("load_previous_model", False)
                 
         #Dataloaders
         self.train_loader = self.accelerator.prepare_data_loader(train_loader)
@@ -91,12 +94,14 @@ class Trainer:
         self.grad_clip = kwargs.get("grad_clip", 0.1)
         self.weight_decay = kwargs.get("weight_decay", 0.05)
 
-    def prepare_optimizer_scheduler(self):
+
+    def prepare_trainer(self):
+        self.model = self.accelerator.prepare(self.model)
         self.optimizer = self.accelerator.prepare_optimizer(self.optimizer)
         self.scheduler = self.accelerator.prepare_scheduler(self.scheduler)
 
     @nvtx.annotate("Training Section", color="green")
-    def train(self, prof = False):
+    def train(self, prof = False, load=False):
         """Entrena el modelo Imitator.
         returns:
             train_loss: float, loss de entrenamiento
@@ -122,8 +127,11 @@ class Trainer:
 
         lr_lambda = lambda step: linear_warmup_cosine_decay(step, warmup_steps, total_steps)
         self.scheduler = LambdaLR(self.optimizer, lr_lambda=lr_lambda)
-        self.prepare_optimizer_scheduler()
 
+        if self.load_previous_model: 
+            self.ckpt_mgr.load_checkpoint(self.model, self.optimizer, self.scheduler)
+
+        self.prepare_trainer()
         self.prof = prof
 
         for epoch in tqdm(range(self.epochs), desc="Entrenando", colour="green"):
@@ -131,13 +139,13 @@ class Trainer:
             val_loss = self._val(epoch)
 
             if epoch == 1:
-                self.ckpt_mgr.save_model(self.model, epoch)
+                self.ckpt_mgr.save_checkpoint(self.model, epoch, self.optimizer, self.scheduler)
             elif epoch == self.epochs - 1:
-                self.ckpt_mgr.save_model(self.model, epoch)
+                self.ckpt_mgr.save_checkpoint(self.model, epoch, self.optimizer, self.scheduler)
             elif (epoch % self.checkpoint_interval == 0 and epoch != 0) :
-                self.ckpt_mgr.save_model(self.model, epoch)
+                self.ckpt_mgr.save_checkpoint(self.model, epoch, self.optimizer, self.scheduler)
             elif self.early_stopping.stop:
-                self.ckpt_mgr.save_model(self.model, epoch)
+                self.ckpt_mgr.save_checkpoint(self.model, epoch, self.optimizer, self.scheduler)
             
             if self.scheduler is not None:
                 self.scheduler.step()
@@ -184,7 +192,7 @@ class Trainer:
             patience=2,
             min_lr=1e-7
         )
-        self.prepare_optimizer_scheduler()
+        self.prepare_trainer()
 
         for epoch in tqdm(range(self.epochs), desc="Entrenando", colour="green"):
             train_loss = self._train_epoch(epoch)

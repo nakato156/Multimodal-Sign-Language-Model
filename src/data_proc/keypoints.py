@@ -2,7 +2,6 @@ import numpy as np
 from video_reader import PyVideoReader
 from rtmlib import Custom
 import pickle
-import numpy as np
 import gc
 import torch
 from concurrent.futures import ThreadPoolExecutor

@@ -7,3 +7,4 @@ encoder_dropout = 0.1
 multihead_dropout = 0.35
 sequential_dropout = 0.2
 pool_dim = 512
+use_checkpoint = 512

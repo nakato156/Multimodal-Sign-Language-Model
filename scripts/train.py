@@ -8,7 +8,7 @@ torch.manual_seed(23)
 random.seed(23)
 
 from src.mslm.utils.setup_train import setup_paths
-from src.mslm.utils import create_dataloaders, build_model, run_training, prepare_datasets, ConfigLoader
+from src.mslm.utils import create_dataloaders, build_model, run_training, prepare_datasets, ConfigLoader, check_checkpoint
 
 def run(
     epochs: int,
@@ -59,6 +59,9 @@ def run(
     tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=10, train_length=tr_len, val_length=val_len)
 
     model = build_model(**model_parameters)
+    load_previous = check_checkpoint(model, train_config)
+    train_config["load_previous_model"] = load_previous
+
     run_training(train_config, tr_dl, val_dl, model)
 
 if __name__ == "__main__":

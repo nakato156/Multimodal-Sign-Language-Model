@@ -83,7 +83,7 @@ def complete_objective(trial, train_dataloader, val_dataloader, model_params, tr
 
     lr_lambda = lambda step: linear_warmup_cosine_decay(step, warmup_steps, total_steps)
     trainer.scheduler = LambdaLR(trainer.optimizer, lr_lambda=lr_lambda)
-    trainer.prepare_optimizer_scheduler()
+    trainer.prepare_trainer()
 
     for epoch in trange(trainer.epochs, desc="Epochs"):
         train_loss = trainer._train_epoch(epoch)
