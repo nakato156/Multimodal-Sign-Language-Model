@@ -22,10 +22,6 @@ class PathVariables:
 
     def _init(self, base_path: str | Path):
         bp = Path(base_path) if base_path else Path(getcwd())
-        if not (bp.parent / "data").exists():
-            raise FileNotFoundError(
-                f"Base path {bp} does not contain the required data directory."
-            )
 
         self._base_path = bp
 
