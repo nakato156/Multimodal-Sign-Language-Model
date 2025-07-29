@@ -43,7 +43,7 @@ cmd = "python scripts/make_study.py --n_trials 15 --batch_size 64 --batch_sample
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.embed]
-cmd = "python scripts/pre_calculate.py"
+cmd = "python src/data_proc/main.py"
 env = { PYTHONPATH = "." }
 
 [tool.poe.tasks.profile_nvidia]

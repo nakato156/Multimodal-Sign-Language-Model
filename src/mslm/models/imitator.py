@@ -133,6 +133,5 @@ class Imitator(nn.Module):
         )  # [B, n_tokens, hidden]
         x = self.norm_attn(Q + attn_out)
         x = self.proj(x)     # [B, n_tokens, output_size]
-        # print(f"Attention output shape: {attn_out.shape}, Q shape: {Q.shape}, M shape: {M.shape}")
-        #x = x + stochastic_depth(self.proj_final(attn_out), p=0.2, mode="row")        # [B, n_tokens, output_size]
+        
         return x

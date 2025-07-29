@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 def imitator_loss(pred_embs: torch.Tensor, target_embs: torch.Tensor, embedding_mask: torch.Tensor = None) -> torch.Tensor:
@@ -30,7 +29,6 @@ def imitator_loss(pred_embs: torch.Tensor, target_embs: torch.Tensor, embedding_
 
     loss_cossim = 1 - F.cosine_similarity(pred_norm, target_norm, dim=-1)
     masked_loss_cossim = (loss_cossim * valid).sum() / valid.sum()
-    # print(f"mse loss: {masked_loss_mse}, cossim loss: {masked_loss_cossim}")
 
     beta = (masked_loss_mse / (masked_loss_cossim + 1e-6)).detach()
 

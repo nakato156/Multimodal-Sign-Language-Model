@@ -14,13 +14,13 @@ class PathVariables:
     )
     _instance = None
 
-    def __new__(cls, base_path: str | Path = None):
+    def __new__(cls, base_path: str | Path = None, dataset_filename: str = "dataset_v4.hdf5"):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._init(base_path)
+            cls._instance._init(base_path, dataset_filename)
         return cls._instance
 
-    def _init(self, base_path: str | Path):
+    def _init(self, base_path: str | Path, dataset_filename: str = "dataset_v4.hdf5"):
         bp = Path(base_path) if base_path else Path(getcwd())
 
         self._base_path = bp
@@ -43,9 +43,6 @@ class PathVariables:
         # Datos
         dp = bp.parent / "data"
         self.data_path = dp
-        self.h5_file = dp / "processed" / "dataset_v4.hdf5"
-        #self.h5_file = dp / "dataset_clean_clean.hdf5"
-        #self.h5_file = dp / "dataset_small_clean25.hdf5"
-        #self.h5_file = dp / "dataset_small5_clean.hdf5"
+        self.h5_file = dp / "processed" / dataset_filename
 
-path_vars = PathVariables()
+path_vars = PathVariables(dataset_filename="dataset_v4_unsloth.hdf5")

@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 
 class MultimodalSignLM:
-    def __init__(self, model, tokenizer, device):
+    def __init__(self, base_model, tokenizer, device):
         """
         Initialize the MultimodalSignLM class.
         Params
@@ -11,12 +11,12 @@ class MultimodalSignLM:
         :device: The device to run the model on (e.g., 'cuda' or 'cpu').
         """
 
-        self.model = model
+        self.model = base_model
         self.tokenizer = tokenizer
         self.device = device
 
         # Get the embeddings of all tokens in the vocabulary
-        self.all_embeddings = model.get_input_embeddings().weight.data.to(self.device)
+        self.all_embeddings = base_model.get_input_embeddings().weight.data.to(self.device)
 
     def process_inputs(self, keypoints_embeddings, text_input:str):
         # Preprocess the inputs
@@ -74,8 +74,7 @@ class MultimodalSignLM:
 
         embeddings = embeddings.to(device)
 
-        embedding_layer = self.model.get_input_embeddings()
-        embedding_matrix = embedding_layer.weight.float().to(device)  # [vocab_size, hidden_dim]
+        embedding_matrix = self.all_embeddings.to(device)  # [V, D]
 
         embedding_matrix_norm = F.normalize(embedding_matrix, p=2, dim=1)  # [V, D]
         print(embedding_matrix_norm.shape)

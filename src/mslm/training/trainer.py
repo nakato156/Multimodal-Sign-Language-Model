@@ -22,7 +22,7 @@ import nvtx
 from datetime import datetime
 
 class Trainer:
-    def __init__(self, model, train_loader, val_loader, save_tb_model=True, **kwargs):
+    def __init__(self, model, train_loader, val_loader, learning_rate, save_tb_model=True, **kwargs):
         dynamo_plugin = TorchDynamoPlugin(
             backend="inductor",  # Options: "inductor", "aot_eager", "aot_nvfuser", etc.
             mode="default",      # Options: "default", "reduce-overhead", "max-autotune"
@@ -35,7 +35,7 @@ class Trainer:
 
         #Hyperparameters
         self.epochs = kwargs.get("epochs", 100)
-        self.learning_rate = kwargs.get("learning_rate", 1e-4)
+        self.learning_rate = learning_rate
 
         #Loggers
         self.log_interval = kwargs.get("log_interval", 5)
@@ -303,7 +303,10 @@ class Trainer:
         val_loss=0
         mse_loss = 0
         cossim_loss = 0
+        mse_loss = 0
+        cossim_loss = 0
         for keypoint, frames_padding_mask, embedding, mask_embedding in self.val_loader:        
+            loss, mse, cossim = self._val_batch(keypoint, frames_padding_mask, embedding, mask_embedding)
             loss, mse, cossim = self._val_batch(keypoint, frames_padding_mask, embedding, mask_embedding)
             if self.distributed is not None:
                 loss_tensor = loss.to(self.device)
@@ -316,16 +319,20 @@ class Trainer:
                 mse_loss += mse
                 cossim_loss += cossim
 
+                mse_loss += mse
+                cossim_loss += cossim
+
         final_val_loss = val_loss.item() / len(self.val_loader)
         final_mse_loss = mse_loss.item() / len(self.val_loader)
         final_cossim_loss = cossim_loss.item() / len(self.val_loader)
-        
         self.writer.add_scalar("Loss/val", final_val_loss, epoch)
+        self.writer.add_scalar("Loss/val_mse", final_mse_loss, epoch)
+        self.writer.add_scalar("Loss/val_cossim", final_cossim_loss, epoch)
         self.writer.add_scalar("Loss/val_mse", final_mse_loss, epoch)
         self.writer.add_scalar("Loss/val_cossim", final_cossim_loss, epoch)
 
         if epoch % self.log_interval == 0:
-            tqdm.write(f"\nValidation loss: {final_val_loss} MSE: {final_mse_loss} Cossim: {final_cossim_loss}")
+            tqdm.write(f"Validation loss: {final_val_loss} MSE: {final_mse_loss} Cossim: {final_cossim_loss}")
 
         self.early_stopping(final_val_loss)
         return final_val_loss
@@ -333,31 +340,33 @@ class Trainer:
     @nvtx.annotate("Val: Validate Batch", color="green")
     def _val_batch(self, keypoint, frames_padding_mask, embedding, mask_embedding) -> t.Tuple[float, float, float]:
         batch_loss = 0.0
-        batch_mse, batch_cossim = 0.0, 0.0 
-
+        batch_mse = 0.0
+        batch_cossim = 0.0
+        
         batch_size = keypoint.size(0)
         start = 0
         end = keypoint.size(0)
+
         if self.batch_sampling:
             n_sub_batch = (batch_size + self.sub_batch - 1) // self.sub_batch
-        
+
         with nvtx.annotate("Val: Forward + Loss", color="blue"):
             for i in range(n_sub_batch):
                 if self.batch_sampling:
                     start = i * self.sub_batch
-                    end = min(start + self.sub_batch, batch_size)
-                    with nvtx.annotate("Forward Pass", color="blue"):
-                        loss, mse, cossim = self._forward_loss(keypoint[start:end], 
+                    end = min(start + self.sub_batch, self.batch_size)                
+                with nvtx.annotate("Forward Pass", color="blue"):
+                    loss, mse, cossim = self._forward_loss(keypoint[start:end], 
                                                 frames_padding_mask[start:end], 
                                                 embedding[start:end], 
                                                 mask_embedding[start:end])
-                    if self.batch_sampling:
-                        loss /= n_sub_batch
-                        mse /= n_sub_batch
-                        cossim /= n_sub_batch
+                if self.batch_sampling:
+                    loss /= n_sub_batch
+                    mse /= n_sub_batch
+                    cossim /= n_sub_batch
                         
-                batch_loss += loss.detach()
-                batch_mse += mse.detach()
-                batch_cossim += cossim.detach()
+            batch_loss += loss.detach()
+            batch_mse += mse.detach()
+            batch_cossim += cossim.detach()
 
         return batch_loss, batch_mse, batch_cossim

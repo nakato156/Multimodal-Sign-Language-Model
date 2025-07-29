@@ -1,3 +1,4 @@
+from pathlib import Path
 import h5py
 import os
 import pandas as pd
@@ -83,10 +84,15 @@ def save_labels(hdf5Group, videoFolderPath):
         group.create_dataset(key, data=[label], dtype=dt, compression="gzip")
 
 if __name__ == "__main__":
+    from argparse import ArgumentParser
+    parser = ArgumentParser(description="Pre-calculate keypoints and embeddings for the dataset.")
+    parser.add_argument("--dataset_filename", type=Path, help="Main directory of the project.")
+    args = parser.parse_args()
+
     dataPath = os.path.join(main_directory, "data")
     keypoint_tool = KeypointProcessing()
     llm = LLM(main_directory)
-    f = h5py.File(os.path.join(dataPath, "processed", "dataset_v5.hdf5"), 'r+')
+    f = h5py.File(os.path.join(dataPath, "processed", args.dataset_filename), 'r+')
 
     videosPath = os.path.join(main_directory, "data", "raw")
     for Folder in os.listdir(videosPath):
