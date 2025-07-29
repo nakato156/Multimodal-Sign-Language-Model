@@ -22,7 +22,7 @@ import nvtx
 from datetime import datetime
 
 class Trainer:
-    def __init__(self, model, train_loader, val_loader, save_tb_model=True, **kwargs):
+    def __init__(self, model, train_loader, val_loader, learning_rate, save_tb_model=True, **kwargs):
         dynamo_plugin = TorchDynamoPlugin(
             backend="inductor",  # Options: "inductor", "aot_eager", "aot_nvfuser", etc.
             mode="default",      # Options: "default", "reduce-overhead", "max-autotune"
@@ -35,7 +35,7 @@ class Trainer:
 
         #Hyperparameters
         self.epochs = kwargs.get("epochs", 100)
-        self.learning_rate = kwargs.get("learning_rate", 1e-4)
+        self.learning_rate = learning_rate
 
         #Loggers
         self.log_interval = kwargs.get("log_interval", 5)

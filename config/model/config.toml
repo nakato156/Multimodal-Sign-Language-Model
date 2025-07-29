@@ -1,3 +1,5 @@
+[model]
+input_size = 266
 output_size= 3072
 hidden_size= 1792
 nhead= 16

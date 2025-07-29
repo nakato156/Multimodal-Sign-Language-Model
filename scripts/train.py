@@ -8,7 +8,8 @@ torch.manual_seed(23)
 random.seed(23)
 
 from src.mslm.utils.setup_train import setup_paths
-from src.mslm.utils import create_dataloaders, build_model, run_training, prepare_datasets, ConfigLoader
+from src.mslm.utils import create_dataloaders, build_model, run_training, prepare_datasets
+from src.mslm.utils.config_loader import cfg
 
 def run(
     epochs: int,
@@ -19,29 +20,25 @@ def run(
     train_ratio: float = 0.8,
     key_points: int = 133,
     batch_sampling: bool = True,
-):    
+):   
     _, _, h5_file = setup_paths()
     device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    model_parameters = ConfigLoader("config/model/config.toml").load_config()
-    model_parameters.update({
-        "input_size": 133 * 2,
-        "output_size": 3072,
-    })
     
     # --- config de entrenamiento ---
-    train_config = ConfigLoader("config/training/train_config.toml").load_config()
-    train_ratio = train_config.get("train_ratio", train_ratio)
-    train_config.update({
-        "learning_rate": train_config.get("learning_rate", 0.00238),
-        "epochs": epochs if epochs else train_config.get("epochs", 100),
-        "batch_size": batch_size if batch_size else train_config.get("batch_size", 32),
-        "batch_sample": batch_sample if batch_sample else train_config.get("sub_batch_size", 32),
-        "checkpoint_interval": checkpoint_interval if checkpoint_interval else train_config.get("checkpoint_interval", 5),
-        "log_interval": log_interval if log_interval else train_config.get("log_interval", 2),
+    training_cfg = cfg.training
+    model_cfg = cfg.model
+    
+    print(training_cfg)
+    train_ratio = training_cfg.get("train_ratio", train_ratio)
+    training_cfg.update({
+        "epochs": epochs if epochs else training_cfg.get("epochs", 100),
+        "batch_size": batch_size if batch_size else training_cfg.get("batch_size", 32),
+        "batch_sample": batch_sample if batch_sample else training_cfg.get("sub_batch_size", 32),
+        "checkpoint_interval": checkpoint_interval if checkpoint_interval else training_cfg.get("checkpoint_interval", 5),
+        "log_interval": log_interval if log_interval else training_cfg.get("log_interval", 2),
         "train_ratio": train_ratio,
         "validation_ratio": round(1 - train_ratio, 2),
-        "device": device if model_parameters.get("device") == "auto" else model_parameters.get("device", device),
+        "device": device if model_cfg.get("device") == "auto" else model_cfg.get("device", device),
         "n_keypoints": key_points,
     })
 
@@ -49,17 +46,17 @@ def run(
         if batch_size%batch_sample != 0 or batch_size < batch_sample:
             raise ValueError(f"The sub_batch {batch_sample} needs to be divisible the batch size {batch_size}")
 
-    train_config["batch_sampling"] = batch_sampling
-    train_config["batch_sample"] = batch_sample
-    train_config["compile"] = False
+    training_cfg["batch_sampling"] = batch_sampling
+    training_cfg["batch_sample"] = batch_sample
+    training_cfg["compile"] = False
 
     print(f"Batch size: {batch_size}, batch sample: {batch_sample}")
-
+    print(f"using dataset {h5_file}")
     tr_ds, val_ds, tr_len, val_len = prepare_datasets(h5_file, train_ratio, key_points)
     tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=10, train_length=tr_len, val_length=val_len)
 
-    model = build_model(**model_parameters)
-    run_training(train_config, tr_dl, val_dl, model)
+    model = build_model(**model_cfg)
+    run_training(training_cfg, tr_dl, val_dl, model)
 
 if __name__ == "__main__":
     import argparse
