@@ -73,16 +73,16 @@ class Imitator(nn.Module):
         # Proyección final por paso de tiempo
         self.proj = nn.Linear(hidden_size, output_size)
 
-        self.token_queries = nn.Parameter(torch.randn(max_seq_length, output_size))  # [1, output_size]
+        self.token_queries = nn.Parameter(torch.randn(max_seq_length, hidden_size))  # [1, hidden_size]
         # Queries = E_tokens [n_tokens × B × d], Keys/Values = frames_repr [T' × B × d]
         self.cross_attn = nn.MultiheadAttention(
-            embed_dim=output_size,
+            embed_dim=hidden_size,
             num_heads=nhead,
             dropout=multihead_dropout,
             batch_first=True,
         )
 
-        self.norm_attn = nn.LayerNorm(output_size)
+        self.norm_attn = nn.LayerNorm(hidden_size)
 
         self.proj_final = nn.Sequential(
             nn.Linear(output_size, output_size * 2),
@@ -122,19 +122,16 @@ class Imitator(nn.Module):
             x = checkpoint(transformer_checkpoint, x, use_reentrant=False)
         else:
             x = transformer_checkpoint(x)  # [B, pool_dim, hidden]
-
-        M = self.proj(x)     # [B, pool_dim, output_size]
-        # M = M.masked_fill(frames_padding_mask.unsqueeze(-1), 0.0)
         
         Q = self.token_queries.unsqueeze(0).expand(B, -1, -1)   # [B, n_tokens, output_size]
     
         attn_out, attn_w = self.cross_attn(
             query=Q,
-            key=M,
-            value=M,
+            key=x,
+            value=x,
             key_padding_mask=frames_padding_mask
-        )  # [B, n_tokens, output_size]
+        )  # [B, n_tokens, hidden]
         x = self.norm_attn(Q + attn_out)
-        # print(f"Attention output shape: {attn_out.shape}, Q shape: {Q.shape}, M shape: {M.shape}")
-        #x = x + stochastic_depth(self.proj_final(attn_out), p=0.2, mode="row")        # [B, n_tokens, output_size]
+        x = self.proj(x)     # [B, n_tokens, output_size]
+        
         return x
