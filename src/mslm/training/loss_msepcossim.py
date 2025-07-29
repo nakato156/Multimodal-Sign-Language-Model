@@ -32,6 +32,8 @@ def imitator_loss(pred_embs: torch.Tensor, target_embs: torch.Tensor, embedding_
     masked_loss_cossim = (loss_cossim * valid).sum() / valid.sum()
     # print(f"mse loss: {masked_loss_mse}, cossim loss: {masked_loss_cossim}")
 
-    loss_total = masked_loss_mse + 2.7 * masked_loss_cossim
+    beta = (masked_loss_mse / (masked_loss_cossim + 1e-6)).detach()
+
+    loss_total = masked_loss_mse + (beta * masked_loss_cossim)
 
     return (loss_total, masked_loss_mse, masked_loss_cossim)

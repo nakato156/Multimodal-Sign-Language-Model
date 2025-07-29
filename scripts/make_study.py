@@ -61,7 +61,7 @@ def run(
     print("Batch Size: ", train_config["batch_size"])
     # optuna
     storage = f"sqlite:///study_models.db"
-    study = optuna.create_study(study_name=f"model_{train_config['model_version']}",
+    study = optuna.create_study(study_name=f"model_{train_config['model_version']}_{train_config['checkpoint']}",
         storage=storage,
         direction="minimize",
         load_if_exists=True,

@@ -1,6 +1,6 @@
-learning_rate = 0.0009178612514712445
-model_version = 102
-checkpoint = 2
+learning_rate = 0.00045
+model_version = 105
+checkpoint = 1
 epochs = 10
 log_interval = 1
 checkpoint_interval = 5
@@ -8,5 +8,5 @@ batch_size = 32
 batch_sample = 4
 train_ratio = 0.8
 device = "auto"
-weight_decay = 0.05
-grad_clip = 1.0
+weight_decay = 0.08
+grad_clip = 3.9

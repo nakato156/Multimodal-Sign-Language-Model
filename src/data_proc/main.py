@@ -86,7 +86,7 @@ if __name__ == "__main__":
     dataPath = os.path.join(main_directory, "data")
     keypoint_tool = KeypointProcessing()
     llm = LLM(main_directory)
-    f = h5py.File(os.path.join(dataPath, "processed", "dataset_v4.hdf5"), 'r+')
+    f = h5py.File(os.path.join(dataPath, "processed", "dataset_v5.hdf5"), 'r+')
 
     videosPath = os.path.join(main_directory, "data", "raw")
     for Folder in os.listdir(videosPath):
