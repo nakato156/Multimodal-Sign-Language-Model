@@ -1,7 +1,7 @@
 import h5py
 import torch
 from torch.utils.data import random_split, Dataset, Subset, ConcatDataset
-from .data_augmentation import normalize_augment_data
+from .data_augmentation import normalize_augment_data, remove_keypoints
 
 class TransformedSubset(Dataset):
     def __init__(self, subset: Subset, transform_fn: str, return_label=False, video_lengths=[], n_keypoints=133):
@@ -31,7 +31,7 @@ class TransformedSubset(Dataset):
         return keypoint, embedding, None
 
 class KeypointDataset(Dataset):
-    def __init__(self, h5Path, n_keypoints=117, transform=None, return_label=False, max_length=4000, data_augmentation=True):
+    def __init__(self, h5Path, n_keypoints=110, transform=None, return_label=False, max_length=4000, data_augmentation=True):
         self.h5Path = h5Path
         self.n_keypoints = n_keypoints
         self.transform = transform
@@ -117,10 +117,11 @@ class KeypointDataset(Dataset):
         with h5py.File(self.h5Path, 'r') as f:
             keypoint = f[mapped_idx[0]]["keypoints"][mapped_idx[1]][:]
             embedding = f[mapped_idx[0]]["embeddings"][mapped_idx[1]][:]
-        
+    
             if self.return_label:
                 label = f[mapped_idx[0]]["labels"][mapped_idx[1]][:][0].decode()
 
+        keypoint = remove_keypoints(keypoint)
         keypoint = normalize_augment_data(keypoint, "Original", self.n_keypoints)
 
         if not isinstance(embedding, torch.Tensor):
