@@ -1,11 +1,10 @@
 [model]
 input_size = 266
 output_size= 3072
-hidden_size= 1792
+hidden_size= 1024
 nhead= 16
 ff_dim= 2816
 n_layers= 10
 encoder_dropout = 0.45
 multihead_dropout = 0.4
-sequential_dropout = 0.6
 pool_dim = 256

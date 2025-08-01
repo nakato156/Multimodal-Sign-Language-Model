@@ -25,7 +25,7 @@ def run(
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
     # --- config de entrenamiento ---
-    training_cfg = cfg.training
+    training_cfg:dict = cfg.training
     model_cfg = cfg.model
     
     print(training_cfg)
@@ -52,8 +52,8 @@ def run(
 
     print(f"Batch size: {batch_size}, batch sample: {batch_sample}")
     print(f"using dataset {h5_file}")
-    tr_ds, val_ds, tr_len, val_len = prepare_datasets(h5_file, train_ratio, key_points)
-    tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=10, train_length=tr_len, val_length=val_len)
+    tr_ds, val_ds, _, _ = prepare_datasets(h5_file, train_ratio, key_points)
+    tr_dl, val_dl = create_dataloaders(tr_ds, val_ds, batch_size, num_workers=10)
 
     model = build_model(**model_cfg)
     load_previous = check_checkpoint(model, training_cfg)

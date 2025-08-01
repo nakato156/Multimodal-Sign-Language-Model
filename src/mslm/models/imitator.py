@@ -15,7 +15,6 @@ class Imitator(nn.Module):
         max_seq_length: int = 301, # cambiar
         encoder_dropout: int = 0.4,
         multihead_dropout: int = 0.1,
-        sequential_dropout: int = 0.1,
         pool_dim: int = 256,
     ):
         super().__init__()
@@ -31,7 +30,6 @@ class Imitator(nn.Module):
             "pool_dim": pool_dim,
             "encoder_dropout": encoder_dropout,
             "multihead_dropout": multihead_dropout,
-            "sequential_dropout": sequential_dropout,
         }
 
         print("Model Parameters: ", self.cfg)
@@ -70,9 +68,6 @@ class Imitator(nn.Module):
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
 
-        # Proyección final por paso de tiempo
-        self.proj = nn.Linear(hidden_size, output_size)
-
         self.token_queries = nn.Parameter(torch.randn(max_seq_length, hidden_size))  # [1, hidden_size]
         # Queries = E_tokens [n_tokens × B × d], Keys/Values = frames_repr [T' × B × d]
         self.cross_attn = nn.MultiheadAttention(
@@ -83,13 +78,9 @@ class Imitator(nn.Module):
         )
 
         self.norm_attn = nn.LayerNorm(hidden_size)
-
-        self.proj_final = nn.Sequential(
-            nn.Linear(output_size, output_size * 2),
-            nn.GELU(),
-            nn.Dropout(sequential_dropout),
-            nn.Linear(output_size * 2, output_size)
-        )
+        
+        # Proyección final por paso de tiempo
+        self.proj = nn.Linear(hidden_size, output_size)
 
     def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor) -> torch.Tensor:
         """
