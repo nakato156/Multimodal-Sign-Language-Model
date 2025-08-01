@@ -34,7 +34,7 @@ def prepare_datasets(h5File, train_ratio, n_keypoints=111):
     print(f"Train size:\t{len(train_dataset)}\nValidation size:\t{len(validation_dataset)}")
     return train_dataset, validation_dataset, train_length, val_length
 
-def create_dataloaders(train_dataset, validation_dataset, batch_size, num_workers=4, use_grpc=False, grpc_address=None, rank = 4, world_size = 4, train_length = None, val_length = None):
+def create_dataloaders(train_dataset, validation_dataset, batch_size, num_workers=4, use_grpc=False, grpc_address=None, rank = 4, world_size = 4):
     """Crea y retorna los DataLoaders para entrenamiento y validación."""
     if use_grpc:
         gtrain_dataset = GRPCDataset(grpc_address, rank, world_size, split="train")
@@ -53,8 +53,8 @@ def create_dataloaders(train_dataset, validation_dataset, batch_size, num_worker
         pin_memory=True)
 
     else:
-        train_sampler = BatchSampler(train_length, batch_size)
-        val_sampler = BatchSampler(val_length, batch_size)
+        train_sampler = BatchSampler(train_dataset, batch_size)
+        val_sampler   = BatchSampler(validation_dataset, batch_size)
 
         train_dataloader = DataLoader(
             train_dataset,
