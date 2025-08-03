@@ -31,7 +31,7 @@ class TransformedSubset(Dataset):
         return keypoint, embedding, None
 
 class KeypointDataset(Dataset):
-    def __init__(self, h5Path, n_keypoints=110, transform=None, return_label=False, max_length=4000, data_augmentation=True):
+    def __init__(self, h5Path, n_keypoints=111, transform=None, return_label=False, max_length=4000, data_augmentation=True):
         self.h5Path = h5Path
         self.n_keypoints = n_keypoints
         self.transform = transform
@@ -59,7 +59,7 @@ class KeypointDataset(Dataset):
             self.original_videos = []
 
             for dataset in datasets:
-                if dataset not in ["dataset1", "dataset3", "dataset5", "dataset7"]:
+                if dataset not in ["dataset2"]:
                     continue
 
                 clip_ids  = list(f[dataset]["embeddings"].keys())
