@@ -18,7 +18,7 @@ def run(
     checkpoint_interval: int,
     log_interval: int,
     train_ratio: float = 0.8,
-    key_points: int = 133,
+    key_points: int = 111,
     batch_sampling: bool = True,
 ):   
     _, _, h5_file = setup_paths()
@@ -28,7 +28,6 @@ def run(
     training_cfg:dict = cfg.training
     model_cfg = cfg.model
     
-    print(training_cfg)
     train_ratio = training_cfg.get("train_ratio", train_ratio)
     training_cfg.update({
         "epochs": epochs if epochs else training_cfg.get("epochs", 100),
@@ -41,6 +40,8 @@ def run(
         "device": device if model_cfg.get("device") == "auto" else model_cfg.get("device", device),
         "n_keypoints": key_points,
     })
+    print(training_cfg)
+
 
     if batch_sampling:
         if batch_size%batch_sample != 0 or batch_size < batch_sample:
@@ -70,7 +71,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_sample", type=int, default=8, help="Batch size for training.")
     parser.add_argument("--checkpoint_interval", type=int, default=5, help="Interval for saving checkpoints.")
     parser.add_argument("--log_interval", type=int, default=2, help="Interval for logging training progress.")
-    parser.add_argument("--num_keypoints", type=int, default=130, help="Number of keypoints to use in the model.")
+    parser.add_argument("--num_keypoints", type=int, default=111, help="Number of keypoints to use in the model.")
     parser.add_argument("--batch_sampling", type=bool, default=False, help="Enables batch sampling for training.")
     args = parser.parse_args()
 

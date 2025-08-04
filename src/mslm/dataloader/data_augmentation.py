@@ -87,7 +87,7 @@ def filter_unstable_keypoints_to_num(keypoints, keep_n):
     Conserva los 'keep_n' keypoints más estables (con menor varianza temporal).
     """
     if keep_n > keypoints.size(1):
-        raise ValueError("keep_n mayor a cantidad de keypoints")
+        raise ValueError(f"keep_n ({keep_n}) mayor a cantidad de keypoints ({keypoints.size(1)})")
 
     T, N, _ = keypoints.shape
 

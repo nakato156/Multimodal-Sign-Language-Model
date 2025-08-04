@@ -15,12 +15,19 @@ def collate_fn(batch):
     keypoints_list  = [item[0] for item in batch]
     embeddings_list = [item[1] for item in batch]
 
+    # Normaliza embeddings a [N, E]
+    for i in range(len(embeddings_list)):
+        emb = embeddings_list[i]
+        if emb.dim() == 3 and emb.size(0) == 1:
+            embeddings_list[i] = emb.squeeze(0)
+        elif emb.dim() != 2:
+            raise ValueError(f"Embedding at index {i} has invalid shape {emb.shape}. Expected [N, E] or [1, N, E].")
+
     frame_lengths = torch.tensor([kp.size(0) for kp in keypoints_list],  dtype=torch.long)
     token_lengths = torch.tensor([emb.size(0) for emb in embeddings_list], dtype=torch.long)
 
-    # pad_sequence pads on dim=0 up to the max length
-    keypoints_padded  = pad_sequence(keypoints_list,  batch_first=True, padding_value=0.0)
-    embeddings_padded = pad_sequence(embeddings_list, batch_first=True, padding_value=0.0)
+    keypoints_padded  = pad_sequence(keypoints_list,  batch_first=True, padding_value=0.0)  # [B, T_max, K, D]
+    embeddings_padded = pad_sequence(embeddings_list, batch_first=True, padding_value=0.0)  # [B, N_max, E]
 
     B, T_max, K, D = keypoints_padded.shape
     _, N_max, E    = embeddings_padded.shape
@@ -28,12 +35,12 @@ def collate_fn(batch):
     arange_frames = torch.arange(T_max).unsqueeze(0).expand(B, -1)  # [B, T_max]
     arange_tokens = torch.arange(N_max).unsqueeze(0).expand(B, -1)  # [B, N_max]
 
-    frames_mask     = arange_frames >= frame_lengths.unsqueeze(1)  # True = frame padding
-    embeddings_mask = arange_tokens >= token_lengths.unsqueeze(1)  # True = token padding
+    frames_mask     = arange_frames >= frame_lengths.unsqueeze(1)  # True = padding
+    embeddings_mask = arange_tokens >= token_lengths.unsqueeze(1)
 
-    keypoints_padded = keypoints_padded.to(torch.float32)
-    keypoints_mask = frames_mask.to(torch.bool)
-    embeddings_padded = embeddings_padded.to(torch.float32)
-    embeddings_mask = embeddings_mask.to(torch.bool)
-
-    return keypoints_padded, keypoints_mask, embeddings_padded, embeddings_mask
+    return (
+        keypoints_padded.to(torch.float32),
+        frames_mask.to(torch.bool),
+        embeddings_padded.to(torch.float32),
+        embeddings_mask.to(torch.bool)
+    )
