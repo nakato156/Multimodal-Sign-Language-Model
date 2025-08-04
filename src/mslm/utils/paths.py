@@ -45,4 +45,4 @@ class PathVariables:
         self.data_path = dp
         self.h5_file = dp / "processed" / dataset_filename
 
-path_vars = PathVariables(dataset_filename="dataset_v4_unsloth.hdf5")
+path_vars = PathVariables(dataset_filename="dataset_v6_unsloth.hdf5")

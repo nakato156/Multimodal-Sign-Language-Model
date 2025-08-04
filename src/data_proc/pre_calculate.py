@@ -1,14 +1,23 @@
 import torch
 import gc
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+
+MODEL_ID = "unsloth/gemma-3n-E2B-it-unsloth-bnb-4bit"
+
 
 class LLM:
-    def __init__(self, model_id="unsloth/Llama-3.2-3B-Instruct"):
+    def __init__(self, model_id=MODEL_ID):
         self.model_id = model_id
 
     def load_model(self):
-        self.model = AutoModelForCausalLM.from_pretrained(self.model_id)
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",  # o "fp4"
+            bnb_4bit_compute_dtype=torch.bfloat16,  # o torch.float16 si no tienes soporte bf16
+        )
+        self.model = AutoModelForCausalLM.from_pretrained(MODEL_ID, quantization_config=bnb_config)
+        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
         self.embeddings = self.model.get_input_embeddings()
 
     def unload_model(self):

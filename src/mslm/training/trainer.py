@@ -254,7 +254,7 @@ class Trainer:
 
     def _forward_loss(self, keypoint, frames_padding_mask, embedding, mask_embedding):
         with self.accelerator.autocast():
-            output = self.model(keypoint, frames_padding_mask)
+            output, _ = self.model(keypoint, frames_padding_mask)
             loss, mse, cossim = self.criterion(output, embedding, mask_embedding)            
         return loss, mse, cossim
 
@@ -286,6 +286,7 @@ class Trainer:
                             cossim /= n_sub_batch
 
                         with nvtx.annotate("Backward Pass", color="blue"):
+                            torch.autograd.set_detect_anomaly(True)
                             self.accelerator.backward(loss)
                         batch_loss += loss.detach()
                         batch_mse += mse.detach()
@@ -303,10 +304,7 @@ class Trainer:
         val_loss=0
         mse_loss = 0
         cossim_loss = 0
-        mse_loss = 0
-        cossim_loss = 0
         for keypoint, frames_padding_mask, embedding, mask_embedding in self.val_loader:        
-            loss, mse, cossim = self._val_batch(keypoint, frames_padding_mask, embedding, mask_embedding)
             loss, mse, cossim = self._val_batch(keypoint, frames_padding_mask, embedding, mask_embedding)
             if self.distributed is not None:
                 loss_tensor = loss.to(self.device)
@@ -316,9 +314,6 @@ class Trainer:
                     print(f"World-avg val loss: {loss:.4f}")
             else:
                 val_loss += loss
-                mse_loss += mse
-                cossim_loss += cossim
-
                 mse_loss += mse
                 cossim_loss += cossim
 
@@ -354,7 +349,7 @@ class Trainer:
             for i in range(n_sub_batch):
                 if self.batch_sampling:
                     start = i * self.sub_batch
-                    end = min(start + self.sub_batch, self.batch_size)                
+                    end = min(start + self.sub_batch, batch_size)                
                 with nvtx.annotate("Forward Pass", color="blue"):
                     loss, mse, cossim = self._forward_loss(keypoint[start:end], 
                                                 frames_padding_mask[start:end], 
@@ -365,8 +360,8 @@ class Trainer:
                     mse /= n_sub_batch
                     cossim /= n_sub_batch
                         
-            batch_loss += loss.detach()
-            batch_mse += mse.detach()
-            batch_cossim += cossim.detach()
+                batch_loss += loss.detach()
+                batch_mse += mse.detach()
+                batch_cossim += cossim.detach()
 
         return batch_loss, batch_mse, batch_cossim

@@ -1,18 +1,20 @@
 import torch
 import torch.nn as nn
 from .components import TransformerEncoderLayerRoPE
+from .components.stgcn import STGCNBlock, partition_adjacency
 from torch.utils.checkpoint import checkpoint
 
 class Imitator(nn.Module):
     def __init__(
         self,
-        input_size: int = 133*2,
+        A,  # raw adjacency matrix, no partitioning
+        input_size: int,
         hidden_size: int = 512,
         output_size: int = 3072,
         nhead: int = 8,
         ff_dim: int = 1024,
         n_layers: int = 2,
-        max_seq_length: int = 301, # cambiar
+        max_seq_length: int = 20, # cambiar
         encoder_dropout: int = 0.4,
         multihead_dropout: int = 0.1,
         pool_dim: int = 256,
@@ -20,6 +22,7 @@ class Imitator(nn.Module):
         super().__init__()
 
         self.cfg = {
+            "A": A,
             "input_size": input_size,
             "hidden_size": hidden_size,
             "output_size": output_size,
@@ -35,27 +38,15 @@ class Imitator(nn.Module):
         print("Model Parameters: ", self.cfg)
     
         # --- Bloque de entrada ---
-
-        self.linear_feat = nn.Sequential(
-            nn.Linear(input_size, hidden_size),
-            nn.GELU(),
-            nn.LayerNorm(hidden_size),
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.GELU(),
-            nn.LayerNorm(hidden_size // 2)
-        )
-
-        #pool_dim = 256
-        # linear sequencer
-        self.conv1  = nn.Conv1d(hidden_size//2, pool_dim, kernel_size=3, padding=1)
-        self.ln1    = nn.LayerNorm(pool_dim)
-        self.act1   = nn.GELU()
-        self.conv2  = nn.Conv1d(pool_dim, pool_dim, kernel_size=1)
-        self.ln2    = nn.LayerNorm(pool_dim)
-        self.act2   = nn.GELU()
+        A = partition_adjacency(A)
+        self.stgcn = STGCNBlock(2, hidden_size // 2, A, kernel_size=3, stride=1)
     
         # Volvemos a hidden_size
-        self.linear_hidden = nn.Linear(pool_dim, hidden_size)
+        self.linear_hidden = nn.Sequential(
+            nn.Conv2d(3 * (hidden_size // 2), hidden_size, kernel_size=1),
+            nn.ReLU(),
+            nn.BatchNorm2d(hidden_size)
+        )
 
         # Positional Encoding + Transformer
         encoder_layer    = TransformerEncoderLayerRoPE(
@@ -91,28 +82,31 @@ class Imitator(nn.Module):
         def transformer_checkpoint(x):
             return self.transformer(x, src_key_padding_mask=frames_padding_mask)
 
-        B, T, D, K = x.shape                # x -> [batch_size, T, input_size]
-        x = x.view(B, T,  D * K)            # [B, T, input_size]
-        
-        x = self.linear_feat(x)             # [B, T, hidden//2]
+        B, T, N, C = x.shape                # x -> [batch_size, T, input_size]
+        # print(f"Input shape: {x.shape}, Frames padding mask shape: {frames_padding_mask.shape}")
+        x = x.permute(0, 3, 1, 2)           # [B, C, T, N]
+        assert not torch.isnan(x).any(), "NaNs justo al iniciar"
 
-        x = x.transpose(1, 2)               # [B, hidden//2, T]
-        # se mantiene T' = T o reducirdo a pool_dim
-        x  = self.conv1(x)                  # [B, hidden//2, pool_dim]
-        x = x.transpose(1, 2)               # [B, pool_dim, hidden//2]
-        x = self.ln1(x)                     # [B, pool_dim, hidden//2]
-        x = self.act1(x)                    # [B, pool_dim, hidden//2]
-        x = x.transpose(1, 2)               # [B, hidden//2, pool_dim]
+        # print(f"Permuted input shape: {x.shape}")
+        x = self.stgcn(x)                   # [B, 3*out_channels, T, K]
+        # print(f"ST-GCN output shape: {x.shape}")
+        assert not torch.isnan(x).any(), "NaNs después del ST-GCN"
 
-        x = self.conv2(x)                  # [B, hidden//2, pool_dim]
-        x = x.transpose(1, 2)               # [B, pool_dim, hidden//2]
+        x = self.linear_hidden(x)           # [B, hidden, T, K]
+        # print(f"Linear hidden output shape: {x.shape}")
+        assert not torch.isnan(x).any(), "NaNs después de linear_hidden"
 
-        x = self.linear_hidden(x)           # [B, pool_dim, hidden]
+        x = x.mean(dim=-1)                  # [B, hidden, T]
+        x = x.permute(0, 2, 1).contiguous() # [B, T, hidden]
+        # print(f"Permuted linear hidden output shape: {x.shape}")
+        assert not torch.isnan(x).any(), "NaNs después del pool nodos"
 
         if self.training:
             x = checkpoint(transformer_checkpoint, x, use_reentrant=False)
         else:
             x = transformer_checkpoint(x)  # [B, pool_dim, hidden]
+        
+        assert not torch.isnan(x).any(), "NaNs después del transformer"
         
         Q = self.token_queries.unsqueeze(0).expand(B, -1, -1)   # [B, n_tokens, output_size]
     
@@ -122,7 +116,8 @@ class Imitator(nn.Module):
             value=x,
             key_padding_mask=frames_padding_mask
         )  # [B, n_tokens, hidden]
+        # print(f"Cross attention output shape: {attn_out.shape}, Attention weights shape: {attn_w.shape}")
         x = self.norm_attn(Q + attn_out)
         x = self.proj(x)     # [B, n_tokens, output_size]
-        
-        return x
+        # print(f"Final output shape: {x.shape}")
+        return x, attn_w

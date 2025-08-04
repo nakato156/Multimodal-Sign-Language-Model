@@ -1,8 +1,9 @@
 import h5py
+import numpy as np
 import torch
+from typing import Optional, List, Tuple
 from torch.utils.data import random_split, Dataset, Subset, ConcatDataset
 from .data_augmentation import normalize_augment_data, remove_keypoints
-
 class TransformedSubset(Dataset):
     def __init__(self, subset: Subset, transform_fn: str, return_label=False, video_lengths=[], n_keypoints=133):
         self.subset    = subset
@@ -59,16 +60,20 @@ class KeypointDataset(Dataset):
             self.original_videos = []
 
             for dataset in datasets:
-                if dataset not in ["dataset2"]:
+                if dataset not in ["dataset1", "dataset3", "dataset5", "dataset7"]:
                     continue
 
                 clip_ids  = list(f[dataset]["embeddings"].keys())
 
                 for clip in clip_ids:
-                    shape = f[dataset]["keypoints"][clip].shape[0]
-                    if shape < self.max_length:
-                        self.valid_index.append((dataset, clip))
-                        self.video_lengths.append(shape)
+                    try:
+                        shape = f[dataset]["keypoints"][clip].shape[0]
+                        if shape < self.max_length:
+                            self.valid_index.append((dataset, clip))
+                            self.video_lengths.append(shape)
+                    except KeyError:
+                        print(f"KeyError for {dataset}/{clip}, skipping...")
+                        continue
                 
             self.dataset_length = len(self.valid_index)
 
@@ -111,7 +116,22 @@ class KeypointDataset(Dataset):
     def __len__(self):
         return len(self.valid_index)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx) -> Tuple[torch.Tensor, Optional[np.ndarray], torch.Tensor, Optional[str]]:
+        """
+        Recupera una muestra individual del conjunto de datos.
+        Este método recupera los puntos clave, la matriz de adyacencia, los embeddings y opcionalmente las etiquetas
+        del archivo HDF5 para el índice dado. Los puntos clave se procesan eliminando
+        puntos específicos y normalizando/aumentando los datos.
+        Args:
+            idx (int): Índice de la muestra a recuperar.
+        Returns:
+            Tupla que contiene:
+            - keypoint (torch.Tensor): Datos de puntos clave procesados.
+            - A (Optional[np.ndarray]): Matriz de adyacencia que representa el grafo esquelético.
+            - embedding (torch.Tensor): Vector de embedding para la muestra.
+            - label (Optional[str]): Cadena de etiqueta si return_label es True, None en caso contrario.
+        """
+        
         mapped_idx = self.valid_index[idx]
             
         with h5py.File(self.h5Path, 'r') as f:

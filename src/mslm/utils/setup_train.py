@@ -1,4 +1,3 @@
-from multiprocessing import Value
 import os
 import torch
 import random
@@ -7,7 +6,8 @@ from io import StringIO
 torch.manual_seed(23)
 random.seed(23)
 
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
+import numpy as np
 
 #Imported Classes
 from src.mslm.models import Imitator
@@ -76,7 +76,9 @@ def create_dataloaders(train_dataset, validation_dataset, batch_size, num_worker
 
 def build_model(input_size, output_size, **kwargs):
     """Construye, compila y retorna el modelo Imitator."""
-    model = Imitator(input_size=input_size, output_size=output_size, **kwargs)
+    adjacency_matrix = np.load("/home/giorgio6846/Code/Sign-AI/data/processed/adjacency_matrix.npy", allow_pickle=True)
+
+    model = Imitator(A=adjacency_matrix, input_size=input_size, output_size=output_size, **kwargs)
     print(model)
     print(f"{sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters")
     return model
