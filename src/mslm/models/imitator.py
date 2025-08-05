@@ -24,8 +24,8 @@ class Imitator(nn.Module):
         self.cfg = {
             "A": A,
             "input_size": input_size,
-            "hidden_size": hidden_size,
             "output_size": output_size,
+            "hidden_size": hidden_size,
             "nhead": nhead,
             "ff_dim": ff_dim,
             "n_layers": n_layers,

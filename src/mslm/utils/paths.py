@@ -11,6 +11,7 @@ class PathVariables:
         "study_path",
         "data_path",
         "h5_file",
+        "A_matrix",
     )
     _instance = None
 
@@ -41,8 +42,9 @@ class PathVariables:
         self.study_path.mkdir(exist_ok=True)
 
         # Datos
-        dp = bp.parent / "data"
+        dp = bp.parent / "data" / "processed"
         self.data_path = dp
-        self.h5_file = dp / "processed" / dataset_filename
+        self.h5_file = dp / dataset_filename
+        self.A_matrix = dp / 'adjacency_matrix.npy'
 
 path_vars = PathVariables(dataset_filename="dataset_v6_unsloth.hdf5")
