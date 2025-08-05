@@ -28,8 +28,7 @@ class Trainer:
             mode="default",      # Options: "default", "reduce-overhead", "max-autotune"
             dynamic=True
         )
-
-        #Accelerator module
+        ##Accelerator module
         self.accelerator = Accelerator(mixed_precision="bf16", dynamo_plugin=dynamo_plugin)
         self.device = self.accelerator.device
 
@@ -254,7 +253,7 @@ class Trainer:
 
     def _forward_loss(self, keypoint, frames_padding_mask, embedding, mask_embedding):
         with self.accelerator.autocast():
-            output, _ = self.model(keypoint, frames_padding_mask)
+            output = self.model(keypoint, frames_padding_mask, embedding, mask_embedding)
             loss, mse, cossim = self.criterion(output, embedding, mask_embedding)            
         return loss, mse, cossim
 

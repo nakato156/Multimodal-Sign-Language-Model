@@ -1,23 +1,21 @@
-import torch
 import torch.nn as nn
-from .components import TransformerEncoderLayerRoPE
 from .components.stgcn import STGCNBlock, partition_adjacency
 from torch.utils.checkpoint import checkpoint
 
 class Imitator(nn.Module):
     def __init__(
         self,
-        A,  # raw adjacency matrix, no partitioning
+        A,
         input_size: int,
         hidden_size: int = 512,
-        output_size: int = 3072,
+        output_size: int = 2048,  # final embedding size if you want
         nhead: int = 8,
-        ff_dim: int = 1024,
-        n_layers: int = 2,
-        max_seq_length: int = 20, # cambiar
+        ff_dim: int = 2048,
+        n_encoder_layers: int = 2,
+        n_decoder_layers: int = 2,
+        max_seq_length: int = 20,
         encoder_dropout: int = 0.4,
-        multihead_dropout: int = 0.1,
-        pool_dim: int = 256,
+        decoder_dropout: int = 0.4,
     ):
         super().__init__()
 
@@ -28,28 +26,24 @@ class Imitator(nn.Module):
             "hidden_size": hidden_size,
             "nhead": nhead,
             "ff_dim": ff_dim,
-            "n_layers": n_layers,
+            "n_encoder_layers": n_encoder_layers,
+            "n_decoder_layers": n_decoder_layers,
             "max_seq_length": max_seq_length,
-            "pool_dim": pool_dim,
             "encoder_dropout": encoder_dropout,
-            "multihead_dropout": multihead_dropout,
+            "decoder_dropout": decoder_dropout,
         }
 
         print("Model Parameters: ", self.cfg)
-    
-        # --- Bloque de entrada ---
+
+        # ---- Encoder: Same as before ----
         A = partition_adjacency(A)
         self.stgcn = STGCNBlock(2, hidden_size // 2, A, kernel_size=3, stride=1)
-    
-        # Volvemos a hidden_size
         self.linear_hidden = nn.Sequential(
             nn.Conv2d(3 * (hidden_size // 2), hidden_size, kernel_size=1),
             nn.ReLU(),
             nn.BatchNorm2d(hidden_size)
         )
-
-        # Positional Encoding + Transformer
-        encoder_layer    = TransformerEncoderLayerRoPE(
+        encoder_layer = nn.TransformerEncoderLayer(
             d_model=hidden_size,
             nhead=nhead,
             dim_feedforward=ff_dim,
@@ -57,67 +51,71 @@ class Imitator(nn.Module):
             batch_first=True,
             norm_first=True
         )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_encoder_layers)
 
-        self.token_queries = nn.Parameter(torch.randn(max_seq_length, hidden_size))  # [1, hidden_size]
-        # Queries = E_tokens [n_tokens × B × d], Keys/Values = frames_repr [T' × B × d]
-        self.cross_attn = nn.MultiheadAttention(
-            embed_dim=hidden_size,
-            num_heads=nhead,
-            dropout=multihead_dropout,
+        # ---- Decoder ----
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=hidden_size,
+            nhead=nhead,
+            dim_feedforward=ff_dim,
+            dropout=decoder_dropout,
             batch_first=True,
+            norm_first=True
         )
+        self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=n_decoder_layers)
 
-        self.norm_attn = nn.LayerNorm(hidden_size)
+        self.out_proj = nn.Linear(hidden_size, output_size) if output_size != hidden_size else nn.Identity()
+
+    def encode(self, x, frames_padding_mask):
+        def stgcn_forward(x):
+            return self.stgcn(x)           
+        def encoder_forward(x):
+            return self.encoder(x, src_key_padding_mask=frames_padding_mask)
+
+        B, T, N, C = x.shape        # x -> [batch_size, T, input_size]
+        x = x.permute(0, 3, 1, 2)   # [B, C, T, N]
         
-        # Proyección final por paso de tiempo
-        self.proj = nn.Linear(hidden_size, output_size)
-
-    def forward(self, x:torch.Tensor, frames_padding_mask:torch.Tensor) -> torch.Tensor:
-        """
-        x: Tensor of frames
-        returns: Tensor of embeddings for each token (128 tokens of frames)
-        """
-        
-        def transformer_checkpoint(x):
-            return self.transformer(x, src_key_padding_mask=frames_padding_mask)
-
-        B, T, N, C = x.shape                # x -> [batch_size, T, input_size]
-        # print(f"Input shape: {x.shape}, Frames padding mask shape: {frames_padding_mask.shape}")
-        x = x.permute(0, 3, 1, 2)           # [B, C, T, N]
-        assert not torch.isnan(x).any(), "NaNs justo al iniciar"
-
-        # print(f"Permuted input shape: {x.shape}")
-        x = self.stgcn(x)                   # [B, 3*out_channels, T, K]
-        # print(f"ST-GCN output shape: {x.shape}")
-        assert not torch.isnan(x).any(), "NaNs después del ST-GCN"
-
-        x = self.linear_hidden(x)           # [B, hidden, T, K]
-        # print(f"Linear hidden output shape: {x.shape}")
-        assert not torch.isnan(x).any(), "NaNs después de linear_hidden"
-
-        x = x.mean(dim=-1)                  # [B, hidden, T]
+        if self.training:
+            x = checkpoint(stgcn_forward, x, use_reentrant=False)
+        else:
+            x = stgcn_forward(x)  # [B, 3*out_channels, T, K]
+        x = self.linear_hidden(x)   # [B, hidden, T, K]
+        x = x.mean(dim=-1)          # [B, hidden, T]
         x = x.permute(0, 2, 1).contiguous() # [B, T, hidden]
-        # print(f"Permuted linear hidden output shape: {x.shape}")
-        assert not torch.isnan(x).any(), "NaNs después del pool nodos"
 
         if self.training:
-            x = checkpoint(transformer_checkpoint, x, use_reentrant=False)
+            x = checkpoint(encoder_forward, x, use_reentrant=False)
         else:
-            x = transformer_checkpoint(x)  # [B, pool_dim, hidden]
-        
-        assert not torch.isnan(x).any(), "NaNs después del transformer"
-        
-        Q = self.token_queries.unsqueeze(0).expand(B, -1, -1)   # [B, n_tokens, output_size]
+            x = encoder_forward(x)  # [B, pool_dim, hidden]
+        return x
     
-        attn_out, attn_w = self.cross_attn(
-            query=Q,
-            key=x,
-            value=x,
-            key_padding_mask=frames_padding_mask
-        )  # [B, n_tokens, hidden]
-        # print(f"Cross attention output shape: {attn_out.shape}, Attention weights shape: {attn_w.shape}")
-        x = self.norm_attn(Q + attn_out)
-        x = self.proj(x)     # [B, n_tokens, output_size]
-        # print(f"Final output shape: {x.shape}")
-        return x, attn_w
+    def decode(self, encoder_out, tgt_embeddings, tgt_padding_mask, memory_key_padding_mask):
+        tgt_seq_len = tgt_embeddings.size(1) #x->[B, T, output_size]
+        tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt_seq_len).to(tgt_embeddings.device)
+        def decoder_forward(tgt, memory):
+            return self.decoder(
+                tgt=tgt,
+                memory=memory,
+                tgt_mask=tgt_mask,
+                tgt_key_padding_mask=tgt_padding_mask,
+                memory_key_padding_mask=memory_key_padding_mask
+            )
+        if self.training:
+            out = checkpoint(decoder_forward, tgt_embeddings, encoder_out, use_reentrant=False)
+        else:
+            out = decoder_forward(
+                tgt_embeddings,
+                encoder_out,
+            )
+        return self.out_proj(out)
+
+    def forward(
+        self,
+        x,
+        frames_padding_mask,
+        tgt_embeddings,
+        tgt_padding_mask,
+    ):
+        encoder_out = self.encode(x, frames_padding_mask)
+        embeddings = self.decode(encoder_out, tgt_embeddings, tgt_padding_mask, frames_padding_mask)
+        return embeddings
