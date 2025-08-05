@@ -67,18 +67,18 @@ class Imitator(nn.Module):
         self.out_proj = nn.Linear(hidden_size, output_size) if output_size != hidden_size else nn.Identity()
 
     def encode(self, x, frames_padding_mask):
-        def stgcn_forward(x):
-            return self.stgcn(x)           
         def encoder_forward(x):
             return self.encoder(x, src_key_padding_mask=frames_padding_mask)
+        def stgcn_forward(x):
+            return self.stgcn(x)
 
         B, T, N, C = x.shape        # x -> [batch_size, T, input_size]
         x = x.permute(0, 3, 1, 2)   # [B, C, T, N]
-        
         if self.training:
             x = checkpoint(stgcn_forward, x, use_reentrant=False)
         else:
-            x = stgcn_forward(x)  # [B, 3*out_channels, T, K]
+            x = self.stgcn(x)  # [B, 3*out_channels, T, K]
+
         x = self.linear_hidden(x)   # [B, hidden, T, K]
         x = x.mean(dim=-1)          # [B, hidden, T]
         x = x.permute(0, 2, 1).contiguous() # [B, T, hidden]
@@ -103,9 +103,12 @@ class Imitator(nn.Module):
         if self.training:
             out = checkpoint(decoder_forward, tgt_embeddings, encoder_out, use_reentrant=False)
         else:
-            out = decoder_forward(
-                tgt_embeddings,
-                encoder_out,
+            out = self.decoder(
+                tgt=tgt_embeddings,
+                memory=encoder_out,
+                tgt_mask=tgt_mask,
+                tgt_key_padding_mask=tgt_padding_mask,
+                memory_key_padding_mask=memory_key_padding_mask
             )
         return self.out_proj(out)
 

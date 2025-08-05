@@ -23,13 +23,8 @@ from datetime import datetime
 
 class Trainer:
     def __init__(self, model, train_loader, val_loader, learning_rate, save_tb_model=True, **kwargs):
-        dynamo_plugin = TorchDynamoPlugin(
-            backend="inductor",  # Options: "inductor", "aot_eager", "aot_nvfuser", etc.
-            mode="default",      # Options: "default", "reduce-overhead", "max-autotune"
-            dynamic=True
-        )
         ##Accelerator module
-        self.accelerator = Accelerator(mixed_precision="bf16", dynamo_plugin=dynamo_plugin)
+        self.accelerator = Accelerator(mixed_precision="bf16")
         self.device = self.accelerator.device
 
         #Hyperparameters
@@ -226,6 +221,8 @@ class Trainer:
             with self.accelerator.accumulate(self.model):
                 self.optimizer.zero_grad(set_to_none=True)        
                 train_loss, mse, cossim = self._train_batch(keypoint, frames_padding_mask, embedding, mask_embedding)
+                print(torch.cuda.memory_allocated() / 1e9, 'GB allocated')
+                print(torch.cuda.memory_reserved() / 1e9, 'GB reserved')
 
             if self.distributed is not None:
                 loss_tensor = loss.to(self.device)
@@ -303,18 +300,19 @@ class Trainer:
         val_loss=0
         mse_loss = 0
         cossim_loss = 0
-        for keypoint, frames_padding_mask, embedding, mask_embedding in self.val_loader:        
-            loss, mse, cossim = self._val_batch(keypoint, frames_padding_mask, embedding, mask_embedding)
-            if self.distributed is not None:
-                loss_tensor = loss.to(self.device)
-                self.distributed.all_reduce(loss_tensor, op=self.distributed.ReduceOp.SUM)
-                val_loss = (loss_tensor) / self.distributed.get_world_size()
-                if self.distributed.get_rank() == 0:
-                    print(f"World-avg val loss: {loss:.4f}")
-            else:
-                val_loss += loss
-                mse_loss += mse
-                cossim_loss += cossim
+        with torch.no_grad():
+            for keypoint, frames_padding_mask, embedding, mask_embedding in self.val_loader:        
+                loss, mse, cossim = self._val_batch(keypoint, frames_padding_mask, embedding, mask_embedding)
+                if self.distributed is not None:
+                    loss_tensor = loss.to(self.device)
+                    self.distributed.all_reduce(loss_tensor, op=self.distributed.ReduceOp.SUM)
+                    val_loss = (loss_tensor) / self.distributed.get_world_size()
+                    if self.distributed.get_rank() == 0:
+                        print(f"World-avg val loss: {loss:.4f}")
+                else:
+                    val_loss += loss
+                    mse_loss += mse
+                    cossim_loss += cossim
 
         final_val_loss = val_loss.item() / len(self.val_loader)
         final_mse_loss = mse_loss.item() / len(self.val_loader)
