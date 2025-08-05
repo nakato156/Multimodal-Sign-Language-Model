@@ -221,8 +221,8 @@ class Trainer:
             with self.accelerator.accumulate(self.model):
                 self.optimizer.zero_grad(set_to_none=True)        
                 train_loss, mse, cossim = self._train_batch(keypoint, frames_padding_mask, embedding, mask_embedding)
-                print(torch.cuda.memory_allocated() / 1e9, 'GB allocated')
-                print(torch.cuda.memory_reserved() / 1e9, 'GB reserved')
+                #print(torch.cuda.memory_allocated() / 1e9, 'GB allocated')
+                #print(torch.cuda.memory_reserved() / 1e9, 'GB reserved')
 
             if self.distributed is not None:
                 loss_tensor = loss.to(self.device)
@@ -250,7 +250,7 @@ class Trainer:
 
     def _forward_loss(self, keypoint, frames_padding_mask, embedding, mask_embedding):
         with self.accelerator.autocast():
-            output = self.model(keypoint, frames_padding_mask, embedding, mask_embedding)
+            output = self.model(keypoint, frames_padding_mask)
             loss, mse, cossim = self.criterion(output, embedding, mask_embedding)            
         return loss, mse, cossim
 

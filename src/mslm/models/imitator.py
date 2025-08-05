@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from .components.stgcn import STGCNBlock, partition_adjacency
 from torch.utils.checkpoint import checkpoint
@@ -53,6 +54,10 @@ class Imitator(nn.Module):
         )
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_encoder_layers)
 
+        self.query_embed = nn.Parameter(
+            torch.randn(max_seq_length, hidden_size)
+        )
+
         # ---- Decoder ----
         decoder_layer = nn.TransformerDecoderLayer(
             d_model=hidden_size,
@@ -89,15 +94,14 @@ class Imitator(nn.Module):
             x = encoder_forward(x)  # [B, pool_dim, hidden]
         return x
     
-    def decode(self, encoder_out, tgt_embeddings, tgt_padding_mask, memory_key_padding_mask):
-        tgt_seq_len = tgt_embeddings.size(1) #x->[B, T, output_size]
-        tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt_seq_len).to(tgt_embeddings.device)
+    def decode(self, encoder_out, tgt_embeddings, memory_key_padding_mask):
+        T_q = tgt_embeddings.size(1) #x->[B, T, output_size]
+        tgt_mask = nn.Transformer.generate_square_subsequent_mask(T_q).to(tgt_embeddings.device)
         def decoder_forward(tgt, memory):
             return self.decoder(
                 tgt=tgt,
                 memory=memory,
                 tgt_mask=tgt_mask,
-                tgt_key_padding_mask=tgt_padding_mask,
                 memory_key_padding_mask=memory_key_padding_mask
             )
         if self.training:
@@ -107,7 +111,6 @@ class Imitator(nn.Module):
                 tgt=tgt_embeddings,
                 memory=encoder_out,
                 tgt_mask=tgt_mask,
-                tgt_key_padding_mask=tgt_padding_mask,
                 memory_key_padding_mask=memory_key_padding_mask
             )
         return self.out_proj(out)
@@ -116,9 +119,10 @@ class Imitator(nn.Module):
         self,
         x,
         frames_padding_mask,
-        tgt_embeddings,
-        tgt_padding_mask,
     ):
         encoder_out = self.encode(x, frames_padding_mask)
-        embeddings = self.decode(encoder_out, tgt_embeddings, tgt_padding_mask, frames_padding_mask)
+
+        B = x.size(0)
+        q = self.query_embed.unsqueeze(0).expand(B, -1, -1)
+        embeddings = self.decode(encoder_out, q, frames_padding_mask)
         return embeddings
