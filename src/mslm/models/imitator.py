@@ -47,7 +47,7 @@ class Imitator(nn.Module):
             nn.BatchNorm2d(encoder_hidden_size)
         )
 
-        self.pe          = PositionalEncoding(encoder_hidden_size, dropout=encoder_dropout, max_len=max_seq_length)
+        self.pe          = PositionalEncoding(encoder_hidden_size, dropout=encoder_dropout)
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=encoder_hidden_size,
             nhead=nhead,
