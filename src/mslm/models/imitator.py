@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from .components.stgcn import STGCNBlock, partition_adjacency
 from torch.utils.checkpoint import checkpoint
+from .components.pe import PositionalEncoding
 
 class Imitator(nn.Module):
     def __init__(
@@ -22,7 +23,6 @@ class Imitator(nn.Module):
         super().__init__()
 
         self.cfg = {
-            "A": A,
             "input_size": input_size,
             "output_size": output_size,
             "encoder_hidden_size": encoder_hidden_size,
@@ -46,6 +46,8 @@ class Imitator(nn.Module):
             nn.ReLU(),
             nn.BatchNorm2d(encoder_hidden_size)
         )
+
+        self.pe          = PositionalEncoding(encoder_hidden_size, dropout=encoder_dropout, max_len=max_seq_length)
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=encoder_hidden_size,
             nhead=nhead,
@@ -77,6 +79,7 @@ class Imitator(nn.Module):
 
     def encode(self, x, frames_padding_mask):
         def encoder_forward(x):
+            x = self.pe(x)
             return self.encoder(x, src_key_padding_mask=frames_padding_mask)
         def stgcn_forward(x):
             return self.stgcn(x)
